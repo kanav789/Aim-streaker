@@ -8,8 +8,21 @@ import { Button } from "@/components/button";
 import { Input } from "@/components/input";
 import { useAuth } from "@/context/auth-context";
 import { logout, updateUserPassword } from "@/service/auth";
-import { getUserProfile, updateUserName, type UserProfile } from "@/service/user";
+import {
+  getUserProfile,
+  updateUserName,
+  updateUserAvatar,
+  type UserProfile,
+} from "@/service/user";
 import { FirebaseError } from "firebase/app";
+
+const BEGINNER_AVATARS = [
+  "/images/beginner-group/avatar-2.png",
+  "/images/beginner-group/avatar-3.jpeg",
+  "/images/beginner-group/avatar-4.jpeg",
+  "/images/beginner-group/avatar-5.jpeg",
+  "/images/beginner-group/avatar-6.jpeg",
+];
 
 export default function ProfileView() {
   const router = useRouter();
@@ -21,6 +34,7 @@ export default function ProfileView() {
 
   // Edit profile form states
   const [editName, setEditName] = useState("");
+  const [selectedAvatar, setSelectedAvatar] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
@@ -33,6 +47,7 @@ export default function ProfileView() {
       const userProfile = await getUserProfile(user.uid, "");
       setProfile(userProfile);
       setEditName(userProfile.name || "");
+      setSelectedAvatar(userProfile.avatarUrl || "");
     } catch (err) {
       console.error("Failed to load user profile", err);
     }
@@ -86,12 +101,15 @@ export default function ProfileView() {
       // 1. Update display name in Firestore
       await updateUserName(user.uid, editName.trim());
 
-      // 2. Update authentication password if requested
+      // 2. Update profile avatarUrl in Firestore
+      await updateUserAvatar(user.uid, selectedAvatar);
+
+      // 3. Update authentication password if requested
       if (isChangingPassword) {
         await updateUserPassword(profile.phone, currentPassword, newPassword);
       }
 
-      // Re-fetch profile to sync display name, reset form
+      // Re-fetch profile to sync state, reset password fields
       await fetchProfile();
       setIsEditing(false);
       setCurrentPassword("");
@@ -116,6 +134,7 @@ export default function ProfileView() {
   const handleCancel = () => {
     setFormError(null);
     setEditName(profile?.name || "");
+    setSelectedAvatar(profile?.avatarUrl || "");
     setCurrentPassword("");
     setNewPassword("");
     setConfirmNewPassword("");
@@ -150,23 +169,27 @@ export default function ProfileView() {
         {!isEditing ? (
           /* VIEW STATE */
           <div className="flex flex-col items-center flex-1">
-            <Image
-              src="/images/anime-avatar.png"
-              alt="Profile"
-              width={96}
-              height={96}
-              className="h-24 w-24 rounded-full border border-border object-cover"
-            />
+            {profile?.avatarUrl ? (
+              <Image
+                src={profile.avatarUrl}
+                alt="Profile"
+                width={96}
+                height={96}
+                className="h-24 w-24 rounded-full border border-border object-cover"
+              />
+            ) : (
+              <div className="h-24 w-24 rounded-full border border-border bg-black" />
+            )}
 
             <h3 className="mt-4 text-lg font-bold text-primary">
-              {profile?.name ? profile.name : (
+              {profile?.name ? (
+                profile.name
+              ) : (
                 <span className="text-secondary/70 italic font-normal">No display name set</span>
               )}
             </h3>
             {profile?.phone ? (
-              <p className="mt-0.5 text-sm text-secondary font-mono">
-                {profile.phone}
-              </p>
+              <p className="mt-0.5 text-sm text-secondary font-mono">{profile.phone}</p>
             ) : null}
 
             {/* User Coins Display */}
@@ -174,7 +197,9 @@ export default function ProfileView() {
               <div className="mt-4 flex flex-col items-center">
                 <div className="inline-flex items-center gap-1.5 rounded-full border border-accent/20 bg-accent/5 px-3.5 py-1 text-sm font-bold text-accent">
                   <span>🪙</span>
-                  <span>{profile.coins} {profile.coins === 1 ? "coin" : "coins"}</span>
+                  <span>
+                    {profile.coins} {profile.coins === 1 ? "coin" : "coins"}
+                  </span>
                 </div>
               </div>
             ) : (
@@ -214,7 +239,11 @@ export default function ProfileView() {
                     stroke="currentColor"
                     className="h-4 w-4"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="m8.25 4.5 7.5 7.5-7.5 7.5"
+                    />
                   </svg>
                 </div>
               </Link>
@@ -244,7 +273,31 @@ export default function ProfileView() {
               required
             />
 
-            <div className="mt-4 pt-4 border-t border-border">
+            {/* Avatar Selector Grid */}
+            <div className="flex flex-col gap-2.5">
+              <label className="text-sm font-medium text-secondary">Select Avatar</label>
+              <div className="flex flex-wrap gap-3 items-center">
+                {BEGINNER_AVATARS.map((url) => {
+                  const isSelected = selectedAvatar === url;
+                  return (
+                    <button
+                      key={url}
+                      type="button"
+                      onClick={() => setSelectedAvatar(url)}
+                      className={`h-14 w-14 shrink-0 rounded-full border overflow-hidden transition-all duration-200 ${
+                        isSelected
+                          ? "border-accent border-2 scale-110 shadow-lg shadow-accent/20"
+                          : "border-border hover:border-secondary"
+                      }`}
+                    >
+                      <img src={url} alt="Avatar Option" className="h-full w-full object-cover" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-2 pt-4 border-t border-border">
               <h4 className="text-xs font-semibold text-secondary uppercase tracking-wider mb-4">
                 Change Password (Optional)
               </h4>

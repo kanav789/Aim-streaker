@@ -8,6 +8,7 @@ export interface UserProfile {
   coins: number;
   globalStreak: number;
   lastGlobalCheckInDate?: string | null; // YYYY-MM-DD
+  avatarUrl?: string; // YYYY-MM-DD
 }
 
 const COLLECTION_NAME = "users";
@@ -25,6 +26,7 @@ export async function getUserProfile(userId: string, defaultName: string = ""): 
       coins: typeof data.coins === "number" ? data.coins : 0,
       globalStreak: typeof data.globalStreak === "number" ? data.globalStreak : 0,
       lastGlobalCheckInDate: data.lastGlobalCheckInDate || null,
+      avatarUrl: data.avatarUrl || "",
     } as UserProfile;
   } else {
     // Initialize default profile in Firestore
@@ -35,6 +37,7 @@ export async function getUserProfile(userId: string, defaultName: string = ""): 
       coins: 0,
       globalStreak: 0,
       lastGlobalCheckInDate: null,
+      avatarUrl: "",
     };
     await setDoc(docRef, defaultProfile);
     return defaultProfile;
@@ -54,6 +57,7 @@ export async function createUserProfile(
     coins: 0,
     globalStreak: 0,
     lastGlobalCheckInDate: null,
+    avatarUrl: "",
   };
   await setDoc(docRef, profile);
   return profile;
@@ -94,5 +98,12 @@ export async function updateUserName(userId: string, name: string): Promise<void
   const docRef = doc(db, COLLECTION_NAME, userId);
   await updateDoc(docRef, {
     name,
+  });
+}
+
+export async function updateUserAvatar(userId: string, avatarUrl: string): Promise<void> {
+  const docRef = doc(db, COLLECTION_NAME, userId);
+  await updateDoc(docRef, {
+    avatarUrl,
   });
 }
