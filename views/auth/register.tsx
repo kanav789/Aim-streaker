@@ -10,7 +10,6 @@ import { Button } from "@/components/button";
 import { registerWithPhone } from "@/service/auth";
 
 type RegisterFormValues = {
-  name: string;
   phone: string;
   password: string;
   confirmPassword: string;
@@ -52,7 +51,7 @@ export default function RegisterView() {
     setIsSubmitting(true);
 
     try {
-      await registerWithPhone(data.name, data.phone, data.password);
+      await registerWithPhone(data.phone, data.password);
       router.push("/");
     } catch (error) {
       console.error(error);
@@ -70,17 +69,6 @@ export default function RegisterView() {
         className="flex flex-1 flex-col gap-5"
         onSubmit={handleSubmit(onSubmit)}
       >
-        <Input
-          label="Name"
-          type="text"
-          placeholder="Enter your name"
-          autoComplete="name"
-          error={errors.name?.message}
-          {...register("name", {
-            required: "Name is required",
-          })}
-        />
-
         <Input
           label="Mobile Number (10 Digits)"
           type="tel"

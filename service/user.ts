@@ -89,3 +89,10 @@ export async function deductCoinsForBrokenStreak(
     coins: currentCoins + coinChange,
   });
 }
+
+export async function updateUserName(userId: string, name: string): Promise<void> {
+  const docRef = doc(db, COLLECTION_NAME, userId);
+  await updateDoc(docRef, {
+    name,
+  });
+}
