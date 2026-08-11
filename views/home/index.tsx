@@ -5,6 +5,11 @@ import Link from "next/link";
 import { Header } from "@/components/header";
 import { useAuth } from "@/context/auth-context";
 import { getUserAims, type Aim } from "@/service/aims";
+import {
+  getUserProfile,
+  updateGlobalStreakAndCoins,
+  deductCoinsForBrokenStreak,
+} from "@/service/user";
 
 export default function HomeView() {
   const { user } = useAuth();
@@ -15,20 +20,11 @@ export default function HomeView() {
   const [hasCheckedInToday, setHasCheckedInToday] = useState<boolean>(false);
   const [mounted, setMounted] = useState<boolean>(false);
 
-  // Scoped localStorage keys based on authenticated user for global habit tracker
-  const getGlobalStreakKeys = () => {
-    const userId = user?.uid || "guest";
-    return {
-      streak: `aim_global_streak_count_${userId}`,
-      lastCheckIn: `aim_global_streak_last_date_${userId}`,
-    };
-  };
-
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Fetch active aims and load global habit streak
+  // Fetch active aims and load global habit streak from Firestore
   useEffect(() => {
     if (!mounted || !user) return;
 
@@ -36,59 +32,68 @@ export default function HomeView() {
       try {
         const userAims = await getUserAims(user.uid);
         setAims(userAims);
+
+        // Fetch User Profile from Firestore
+        const userProfile = await getUserProfile(user.uid, user.email || "");
+
+        const todayStr = new Date().toLocaleDateString("en-CA");
+        const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
+
+        let streakCount = userProfile.globalStreak || 0;
+        let checkedIn = false;
+
+        if (userProfile.lastGlobalCheckInDate === todayStr) {
+          checkedIn = true;
+        } else if (userProfile.lastGlobalCheckInDate === yesterdayStr) {
+          checkedIn = false;
+        } else if (userProfile.lastGlobalCheckInDate) {
+          // Streak broken: Deduct 5 coins and reset globalStreak to 0
+          if (streakCount > 0) {
+            streakCount = 0;
+            await deductCoinsForBrokenStreak(user.uid, -5);
+          }
+        }
+
+        setGlobalStreak(streakCount);
+        setHasCheckedInToday(checkedIn);
       } catch (err) {
-        console.error("Failed to load aims", err);
+        console.error("Failed to load dashboard data from Firestore", err);
       } finally {
         setLoading(false);
       }
     };
 
-    // Load global habit tracker streak
-    const keys = getGlobalStreakKeys();
-    const todayStr = new Date().toLocaleDateString("en-CA");
-    const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
-
-    const savedStreak = localStorage.getItem(keys.streak);
-    const savedLastDate = localStorage.getItem(keys.lastCheckIn);
-
-    let streakCount = savedStreak ? parseInt(savedStreak, 10) : 0;
-    let checkedIn = false;
-
-    if (savedLastDate === todayStr) {
-      checkedIn = true;
-    } else if (savedLastDate === yesterdayStr) {
-      checkedIn = false;
-    } else if (savedLastDate) {
-      streakCount = 0; // broken global streak
-    }
-
-    setGlobalStreak(streakCount);
-    setHasCheckedInToday(checkedIn);
-
     fetchDashboardData();
   }, [user, mounted]);
 
-  const handleGlobalCheckIn = () => {
-    if (hasCheckedInToday) return;
+  const handleGlobalCheckIn = async () => {
+    if (hasCheckedInToday || !user) return;
 
-    const keys = getGlobalStreakKeys();
-    const todayStr = new Date().toLocaleDateString("en-CA");
-    const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
+    try {
+      const userProfile = await getUserProfile(user.uid, user.email || "");
+      
+      const todayStr = new Date().toLocaleDateString("en-CA");
+      const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
 
-    const savedLastDate = localStorage.getItem(keys.lastCheckIn);
-    let newStreak = globalStreak;
+      let newStreak = userProfile.globalStreak || 0;
 
-    if (savedLastDate === yesterdayStr || (globalStreak === 0 && !savedLastDate)) {
-      newStreak += 1;
-    } else if (savedLastDate !== todayStr) {
-      newStreak = 1;
+      if (
+        userProfile.lastGlobalCheckInDate === yesterdayStr ||
+        (newStreak === 0 && !userProfile.lastGlobalCheckInDate)
+      ) {
+        newStreak += 1;
+      } else if (userProfile.lastGlobalCheckInDate !== todayStr) {
+        newStreak = 1;
+      }
+
+      // Update Firestore: save new global streak and add +1 coin!
+      await updateGlobalStreakAndCoins(user.uid, newStreak, todayStr, 1);
+
+      setGlobalStreak(newStreak);
+      setHasCheckedInToday(true);
+    } catch (err) {
+      console.error("Failed to record global check-in in Firestore", err);
     }
-
-    localStorage.setItem(keys.streak, newStreak.toString());
-    localStorage.setItem(keys.lastCheckIn, todayStr);
-
-    setGlobalStreak(newStreak);
-    setHasCheckedInToday(true);
   };
 
   const getFormattedDate = () => {
@@ -177,7 +182,7 @@ export default function HomeView() {
               </div>
             </div>
             <div className="mt-4">
-              <span className="text-2xl font-extrabold tracking-tight text-primary">
+              <span className="text-2xl font-extrabold tracking-tight text-primary font-mono">
                 {globalStreak}
               </span>
               <span className="text-[10px] text-secondary block mt-0.5 font-medium">
