@@ -7,10 +7,11 @@ import { useForm } from "react-hook-form";
 import { FirebaseError } from "firebase/app";
 import { Input } from "@/components/input";
 import { Button } from "@/components/button";
-import { registerWithEmail } from "@/service/auth";
+import { registerWithPhone } from "@/service/auth";
 
 type RegisterFormValues = {
-  email: string;
+  name: string;
+  phone: string;
   password: string;
   confirmPassword: string;
 };
@@ -19,9 +20,9 @@ function getRegisterErrorMessage(error: unknown) {
   if (error instanceof FirebaseError) {
     switch (error.code) {
       case "auth/email-already-in-use":
-        return "An account with this email already exists.";
+        return "An account with this mobile number already exists.";
       case "auth/invalid-email":
-        return "Please enter a valid email address.";
+        return "Please enter a valid 10-digit mobile number.";
       case "auth/weak-password":
         return "Password should be at least 6 characters.";
       default:
@@ -51,9 +52,10 @@ export default function RegisterView() {
     setIsSubmitting(true);
 
     try {
-      await registerWithEmail(data.email, data.password);
-      router.push("/login");
+      await registerWithPhone(data.name, data.phone, data.password);
+      router.push("/");
     } catch (error) {
+      console.error(error);
       setFormError(getRegisterErrorMessage(error));
     } finally {
       setIsSubmitting(false);
@@ -69,13 +71,30 @@ export default function RegisterView() {
         onSubmit={handleSubmit(onSubmit)}
       >
         <Input
-          label="Email"
-          type="email"
-          placeholder="you@example.com"
-          autoComplete="email"
-          error={errors.email?.message}
-          {...register("email", {
-            required: "Email is required",
+          label="Name"
+          type="text"
+          placeholder="Enter your name"
+          autoComplete="name"
+          error={errors.name?.message}
+          {...register("name", {
+            required: "Name is required",
+          })}
+        />
+
+        <Input
+          label="Mobile Number (10 Digits)"
+          type="tel"
+          placeholder="e.g. 9876543210"
+          autoComplete="tel"
+          maxLength={10}
+          minLength={10}
+          error={errors.phone?.message}
+          {...register("phone", {
+            required: "Mobile number is required",
+            pattern: {
+              value: /^\d{10}$/,
+              message: "Please enter exactly 10 digits (numbers only)",
+            },
           })}
         />
 

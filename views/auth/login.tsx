@@ -7,10 +7,10 @@ import { useForm } from "react-hook-form";
 import { FirebaseError } from "firebase/app";
 import { Input } from "@/components/input";
 import { Button } from "@/components/button";
-import { loginWithEmail } from "@/service/auth";
+import { loginWithPhone } from "@/service/auth";
 
 type LoginFormValues = {
-  email: string;
+  phone: string;
   password: string;
 };
 
@@ -18,13 +18,13 @@ function getLoginErrorMessage(error: unknown) {
   if (error instanceof FirebaseError) {
     switch (error.code) {
       case "auth/invalid-email":
-        return "Please enter a valid email address.";
+        return "Please enter a valid mobile number.";
       case "auth/user-disabled":
         return "This account has been disabled.";
       case "auth/user-not-found":
       case "auth/wrong-password":
       case "auth/invalid-credential":
-        return "Invalid email or password.";
+        return "Invalid mobile number or password.";
       default:
         return "Could not log in. Please try again.";
     }
@@ -49,7 +49,7 @@ export default function LoginView() {
     setIsSubmitting(true);
 
     try {
-      await loginWithEmail(data.email, data.password);
+      await loginWithPhone(data.phone, data.password);
       router.push("/");
     } catch (error) {
       setFormError(getLoginErrorMessage(error));
@@ -67,13 +67,19 @@ export default function LoginView() {
         onSubmit={handleSubmit(onSubmit)}
       >
         <Input
-          label="Email"
-          type="email"
-          placeholder="you@example.com"
-          autoComplete="email"
-          error={errors.email?.message}
-          {...register("email", {
-            required: "Email is required",
+          label="Mobile Number (10 Digits)"
+          type="tel"
+          placeholder="e.g. 9876543210"
+          autoComplete="tel"
+          maxLength={10}
+          minLength={10}
+          error={errors.phone?.message}
+          {...register("phone", {
+            required: "Mobile number is required",
+            pattern: {
+              value: /^\d{10}$/,
+              message: "Please enter exactly 10 digits (numbers only)",
+            },
           })}
         />
 

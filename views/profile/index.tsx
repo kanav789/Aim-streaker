@@ -61,9 +61,14 @@ export default function ProfileView() {
           className="h-24 w-24 rounded-full border border-border object-cover"
         />
 
-        <p className="mt-4 text-center text-base text-primary">
-          {user?.email ?? "No email"}
+        <p className="mt-4 text-center text-base font-bold text-primary">
+          {profile?.name ?? "Loading..."}
         </p>
+        {profile?.phone ? (
+          <p className="mt-0.5 text-center text-sm text-secondary font-mono">
+            {profile.phone}
+          </p>
+        ) : null}
 
         {/* User Coins Display */}
         {profile ? (

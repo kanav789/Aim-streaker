@@ -18,6 +18,7 @@ export default function HomeView() {
   const [loading, setLoading] = useState(true);
   const [globalStreak, setGlobalStreak] = useState<number>(0);
   const [hasCheckedInToday, setHasCheckedInToday] = useState<boolean>(false);
+  const [userName, setUserName] = useState<string>("Streaker");
   const [mounted, setMounted] = useState<boolean>(false);
 
   useEffect(() => {
@@ -34,7 +35,8 @@ export default function HomeView() {
         setAims(userAims);
 
         // Fetch User Profile from Firestore
-        const userProfile = await getUserProfile(user.uid, user.email || "");
+        const userProfile = await getUserProfile(user.uid, "User");
+        setUserName(userProfile.name || "Streaker");
 
         const todayStr = new Date().toLocaleDateString("en-CA");
         const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
@@ -70,7 +72,7 @@ export default function HomeView() {
     if (hasCheckedInToday || !user) return;
 
     try {
-      const userProfile = await getUserProfile(user.uid, user.email || "");
+      const userProfile = await getUserProfile(user.uid, "User");
       
       const todayStr = new Date().toLocaleDateString("en-CA");
       const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
@@ -121,8 +123,6 @@ export default function HomeView() {
     }
   };
 
-  const emailPrefix = user?.email ? user.email.split("@")[0] : "Streaker";
-
   if (!mounted) {
     return (
       <div className="flex min-h-full flex-1 flex-col">
@@ -142,7 +142,7 @@ export default function HomeView() {
         {/* Welcome Section */}
         <div className="mb-6 flex justify-between items-center">
           <div>
-            <h2 className="text-xl font-bold text-primary">Hey, {emailPrefix} 👋</h2>
+            <h2 className="text-xl font-bold text-primary">Hey, {userName} 👋</h2>
             <p className="text-sm text-secondary">Let's work towards your aims today.</p>
           </div>
         </div>

@@ -3,7 +3,8 @@ import { db } from "@/firebase/config";
 
 export interface UserProfile {
   uid: string;
-  email: string;
+  name: string;
+  phone: string;
   coins: number;
   globalStreak: number;
   lastGlobalCheckInDate?: string | null; // YYYY-MM-DD
@@ -11,7 +12,7 @@ export interface UserProfile {
 
 const COLLECTION_NAME = "users";
 
-export async function getUserProfile(userId: string, email: string): Promise<UserProfile> {
+export async function getUserProfile(userId: string, defaultName: string = ""): Promise<UserProfile> {
   const docRef = doc(db, COLLECTION_NAME, userId);
   const docSnap = await getDoc(docRef);
 
@@ -19,7 +20,8 @@ export async function getUserProfile(userId: string, email: string): Promise<Use
     const data = docSnap.data();
     return {
       uid: userId,
-      email: data.email || email,
+      name: data.name || defaultName || "User",
+      phone: data.phone || "",
       coins: typeof data.coins === "number" ? data.coins : 0,
       globalStreak: typeof data.globalStreak === "number" ? data.globalStreak : 0,
       lastGlobalCheckInDate: data.lastGlobalCheckInDate || null,
@@ -28,7 +30,8 @@ export async function getUserProfile(userId: string, email: string): Promise<Use
     // Initialize default profile in Firestore
     const defaultProfile: UserProfile = {
       uid: userId,
-      email,
+      name: defaultName || "User",
+      phone: "",
       coins: 0,
       globalStreak: 0,
       lastGlobalCheckInDate: null,
@@ -36,6 +39,24 @@ export async function getUserProfile(userId: string, email: string): Promise<Use
     await setDoc(docRef, defaultProfile);
     return defaultProfile;
   }
+}
+
+export async function createUserProfile(
+  userId: string,
+  name: string,
+  phone: string
+): Promise<UserProfile> {
+  const docRef = doc(db, COLLECTION_NAME, userId);
+  const profile: UserProfile = {
+    uid: userId,
+    name,
+    phone,
+    coins: 0,
+    globalStreak: 0,
+    lastGlobalCheckInDate: null,
+  };
+  await setDoc(docRef, profile);
+  return profile;
 }
 
 export async function updateGlobalStreakAndCoins(
