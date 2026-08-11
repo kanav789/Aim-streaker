@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/auth-context";
-import { createAim } from "@/service/aims";
+import { createAim, getUserAims } from "@/service/aims";
 import { Input } from "@/components/input";
 import { Button } from "@/components/button";
 
@@ -18,6 +18,28 @@ export default function CreateAimView() {
   const [steps, setSteps] = useState<string[]>([""]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Focus validation states
+  const [isLoadingCheck, setIsLoadingCheck] = useState(true);
+  const [hasActiveAim, setHasActiveAim] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const checkActiveAims = async () => {
+      try {
+        const aims = await getUserAims(user.uid);
+        const active = aims.some((aim) => !aim.completed);
+        setHasActiveAim(active);
+      } catch (err) {
+        console.error("Failed to query active aims", err);
+      } finally {
+        setIsLoadingCheck(false);
+      }
+    };
+
+    checkActiveAims();
+  }, [user]);
 
   const handleAddStep = () => {
     setSteps([...steps, ""]);
@@ -36,7 +58,7 @@ export default function CreateAimView() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || hasActiveAim) return;
 
     setError(null);
 
@@ -80,6 +102,37 @@ export default function CreateAimView() {
       setIsSubmitting(false);
     }
   };
+
+  if (isLoadingCheck) {
+    return (
+      <div className="flex min-h-full items-center justify-center bg-background px-4">
+        <p className="text-sm text-secondary animate-pulse">Checking focused aims...</p>
+      </div>
+    );
+  }
+
+  if (hasActiveAim) {
+    return (
+      <div className="flex min-h-full flex-col px-4 pb-8 pt-12 text-center bg-background justify-center items-center">
+        <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-accent/20 bg-accent/5 text-2xl">
+          🎯
+        </div>
+        <h1 className="text-xl font-bold text-primary">Aim Already Active</h1>
+        <p className="mt-3 max-w-sm text-sm text-secondary leading-relaxed">
+          To maintain absolute focus, Aim Streaker limits you to exactly one active aim at a time.
+          Complete or delete your active aim to begin another one!
+        </p>
+
+        <div className="mt-8 w-full max-w-xs">
+          <Link href="/">
+            <Button className="w-full py-3 bg-accent text-background font-bold hover:bg-accent/90">
+              Go to Dashboard
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-full flex-1 flex-col pb-8">

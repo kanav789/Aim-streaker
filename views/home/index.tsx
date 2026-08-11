@@ -228,14 +228,16 @@ export default function HomeView() {
         {/* Section Title */}
         <div className="flex items-center justify-between mb-4 mt-2">
           <h3 className="text-sm font-semibold text-primary uppercase tracking-wider">
-            Your Active Aims
+            {aims.some((aim) => !aim.completed) ? "Your Active Aim" : "Your Active Aims"}
           </h3>
-          <Link
-            href="/aims/new"
-            className="text-xs font-semibold text-accent hover:underline flex items-center gap-1"
-          >
-            + Create Aim
-          </Link>
+          {!aims.some((aim) => !aim.completed) ? (
+            <Link
+              href="/aims/new"
+              className="text-xs font-semibold text-accent hover:underline flex items-center gap-1"
+            >
+              + Create Aim
+            </Link>
+          ) : null}
         </div>
 
         {/* Loading / Aims list */}

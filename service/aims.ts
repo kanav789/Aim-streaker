@@ -8,6 +8,7 @@ import {
   where,
   updateDoc,
   orderBy,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "@/firebase/config";
 
@@ -126,4 +127,9 @@ export async function completeAim(aimId: string): Promise<void> {
     completed: true,
     progress: 100,
   });
+}
+
+export async function deleteAim(aimId: string): Promise<void> {
+  const docRef = doc(db, COLLECTION_NAME, aimId);
+  await deleteDoc(docRef);
 }

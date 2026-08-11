@@ -9,6 +9,7 @@ import {
   updateAimSteps,
   checkInAimDaily,
   completeAim,
+  deleteAim,
   type Aim,
   type AimStep,
 } from "@/service/aims";
@@ -26,6 +27,7 @@ export default function AimDetailsView({ aimId }: AimDetailsViewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Fetch Aim Details
   useEffect(() => {
@@ -352,6 +354,34 @@ export default function AimDetailsView({ aimId }: AimDetailsViewProps) {
             </p>
           </div>
         )}
+
+        {/* Delete Aim Section */}
+        <div className="mt-8 pb-8">
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full py-3 border-accent/25 hover:border-accent/40 text-accent text-xs font-semibold"
+            onClick={async () => {
+              if (isDeleting) return;
+              const confirmed = window.confirm(
+                "Are you sure you want to delete this Aim? Your progress and streak will be permanently lost."
+              );
+              if (!confirmed) return;
+
+              setIsDeleting(true);
+              try {
+                await deleteAim(aimId);
+                router.push("/");
+              } catch (err) {
+                console.error("Failed to delete aim", err);
+                setIsDeleting(false);
+              }
+            }}
+            disabled={isDeleting}
+          >
+            {isDeleting ? "Deleting..." : "Delete Aim"}
+          </Button>
+        </div>
       </main>
     </div>
   );
