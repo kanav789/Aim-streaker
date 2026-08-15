@@ -8,15 +8,18 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "./auth-context";
+import { getLocalYYYYMMDD, getYesterdayYYYYMMDD } from "@/service/date";
 import {
   getUserAims,
   createAim,
   updateAimSteps,
+  updateAimRecurringSteps,
   checkInAimDaily,
   completeAim,
   deleteAim,
   type Aim,
   type AimStep,
+  type CheckInLog,
 } from "@/service/aims";
 import {
   getUserProfile,
@@ -36,12 +39,17 @@ type AimsContextValue = {
     title: string,
     description: string,
     deadline: string,
-    steps: { id: string; text: string; completed: boolean }[]
+    steps: { id: string; text: string; completed: boolean }[],
+    recurringSteps: { id: string; text: string; completed: boolean }[]
   ) => Promise<string>;
   updateAimStepsAction: (
     aimId: string,
     steps: AimStep[],
     progress: number
+  ) => Promise<void>;
+  updateAimRecurringStepsAction: (
+    aimId: string,
+    recurringSteps: AimStep[]
   ) => Promise<void>;
   checkInAimDailyAction: (
     aimId: string,
@@ -68,8 +76,47 @@ export function AimsProvider({ children }: { children: ReactNode }) {
       const aimsData = await getUserAims(uid);
       const profileData = await getUserProfile(uid, email);
 
-      const todayStr = new Date().toLocaleDateString("en-CA");
-      const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
+      const todayStr = getLocalYYYYMMDD();
+      const yesterdayStr = getYesterdayYYYYMMDD();
+
+      const normalizedAims = aimsData.map((aim) => {
+        let hasChanges = false;
+        let streak = aim.streak || 0;
+
+        // If they missed yesterday's check-in, the habit streak resets to 0 in memory
+        if (
+          aim.lastCheckInDate &&
+          aim.lastCheckInDate !== todayStr &&
+          aim.lastCheckInDate !== yesterdayStr
+        ) {
+          if (streak > 0) {
+            streak = 0;
+            hasChanges = true;
+          }
+        }
+
+        const currentRecurringSteps = aim.recurringSteps || [];
+        const updatedRecurringSteps = currentRecurringSteps.map((step) => {
+          // If step was completed on a previous day, reset it in memory
+          if (step.completed && step.completedAt !== todayStr) {
+            hasChanges = true;
+            return { ...step, completed: false, completedAt: undefined };
+          }
+          return step;
+        });
+
+        if (hasChanges) {
+          return {
+            ...aim,
+            recurringSteps: updatedRecurringSteps,
+            streak,
+          };
+        }
+        return {
+          ...aim,
+          recurringSteps: currentRecurringSteps, // Ensure it is initialized
+        };
+      });
 
       let streakCount = profileData.globalStreak || 0;
       let finalProfile = { ...profileData };
@@ -88,7 +135,7 @@ export function AimsProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      setAims(aimsData);
+      setAims(normalizedAims);
       setProfile(finalProfile);
     } catch (err) {
       console.error("Failed to load aims/profile data from Firestore", err);
@@ -118,7 +165,8 @@ export function AimsProvider({ children }: { children: ReactNode }) {
     title: string,
     description: string,
     deadline: string,
-    steps: { id: string; text: string; completed: boolean }[]
+    steps: { id: string; text: string; completed: boolean }[],
+    recurringSteps: { id: string; text: string; completed: boolean }[]
   ): Promise<string> => {
     if (!user) throw new Error("User must be authenticated");
 
@@ -127,6 +175,7 @@ export function AimsProvider({ children }: { children: ReactNode }) {
       description,
       deadline,
       steps,
+      recurringSteps,
     });
 
     const newAim: Aim = {
@@ -135,7 +184,8 @@ export function AimsProvider({ children }: { children: ReactNode }) {
       title,
       description,
       deadline,
-      steps: steps.map((s) => ({ ...s, completedAt: s.completed ? new Date().toLocaleDateString("en-CA") : undefined })),
+      steps: steps.map((s) => ({ ...s, completedAt: s.completed ? getLocalYYYYMMDD() : undefined })),
+      recurringSteps: recurringSteps.map((s) => ({ ...s, completedAt: s.completed ? getLocalYYYYMMDD() : undefined })),
       progress: 0,
       streak: 0,
       lastCheckInDate: null,
@@ -158,16 +208,49 @@ export function AimsProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const updateAimRecurringStepsAction = async (
+    aimId: string,
+    recurringSteps: AimStep[]
+  ) => {
+    await updateAimRecurringSteps(aimId, recurringSteps);
+    setAims((prev) =>
+      prev.map((aim) => (aim.id === aimId ? { ...aim, recurringSteps } : aim))
+    );
+  };
+
   const checkInAimDailyAction = async (
     aimId: string,
     newStreak: number,
     lastCheckInDate: string
   ) => {
-    await checkInAimDaily(aimId, newStreak, lastCheckInDate);
+    const targetAim = aims.find((a) => a.id === aimId);
+    if (!targetAim) return;
+
+    const completedSteps = (targetAim.recurringSteps || [])
+      .filter((s) => s.completed)
+      .map((s) => s.id);
+
+    await checkInAimDaily(aimId, newStreak, lastCheckInDate, completedSteps);
+
     setAims((prev) =>
-      prev.map((aim) =>
-        aim.id === aimId ? { ...aim, streak: newStreak, lastCheckInDate } : aim
-      )
+      prev.map((aim) => {
+        if (aim.id === aimId) {
+          const updatedHistory = aim.checkInHistory ? [...aim.checkInHistory] : [];
+          if (!updatedHistory.some((h) => h.date === lastCheckInDate)) {
+            updatedHistory.push({
+              date: lastCheckInDate,
+              completedSteps,
+            });
+          }
+          return {
+            ...aim,
+            streak: newStreak,
+            lastCheckInDate,
+            checkInHistory: updatedHistory,
+          };
+        }
+        return aim;
+      })
     );
   };
 
@@ -188,10 +271,10 @@ export function AimsProvider({ children }: { children: ReactNode }) {
   const handleGlobalCheckInAction = async () => {
     if (!user || !profile) return;
 
-    const todayStr = new Date().toLocaleDateString("en-CA");
+    const todayStr = getLocalYYYYMMDD();
     if (profile.lastGlobalCheckInDate === todayStr) return;
 
-    const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
+    const yesterdayStr = getYesterdayYYYYMMDD();
     let newStreak = profile.globalStreak || 0;
 
     if (
@@ -237,6 +320,7 @@ export function AimsProvider({ children }: { children: ReactNode }) {
         refreshData,
         createAimAction,
         updateAimStepsAction,
+        updateAimRecurringStepsAction,
         checkInAimDailyAction,
         completeAimAction,
         deleteAimAction,

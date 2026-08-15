@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAims } from "@/context/aims-context";
 import { DashboardSkeleton } from "@/components/dashboard-skeleton";
+import { getLocalYYYYMMDD } from "@/service/date";
 import type { Aim } from "@/service/aims";
 
 export default function HomeView() {
@@ -77,7 +78,7 @@ export default function HomeView() {
   const userName = profile?.name || "Streaker";
   const avatarUrl = profile?.avatarUrl || "";
   const globalStreak = profile?.globalStreak || 0;
-  const hasCheckedInToday = profile?.lastGlobalCheckInDate === new Date().toLocaleDateString("en-CA");
+  const hasCheckedInToday = profile?.lastGlobalCheckInDate === getLocalYYYYMMDD();
 
   const weekDates = getWeekDates();
   const weekdaysLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
