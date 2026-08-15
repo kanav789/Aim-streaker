@@ -14,6 +14,7 @@ import {
   type AimStep,
 } from "@/service/aims";
 import { Button } from "@/components/button";
+import { ConfirmModal } from "@/components/confirm-modal";
 
 interface AimDetailsViewProps {
   aimId: string;
@@ -28,6 +29,7 @@ export default function AimDetailsView({ aimId }: AimDetailsViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   // Fetch Aim Details
   useEffect(() => {
@@ -361,28 +363,36 @@ export default function AimDetailsView({ aimId }: AimDetailsViewProps) {
             type="button"
             variant="secondary"
             className="w-full py-3 border-accent/25 hover:border-accent/40 text-accent text-xs font-semibold"
-            onClick={async () => {
-              if (isDeleting) return;
-              const confirmed = window.confirm(
-                "Are you sure you want to delete this Aim? Your progress and streak will be permanently lost."
-              );
-              if (!confirmed) return;
-
-              setIsDeleting(true);
-              try {
-                await deleteAim(aimId);
-                router.push("/");
-              } catch (err) {
-                console.error("Failed to delete aim", err);
-                setIsDeleting(false);
-              }
-            }}
+            onClick={() => setIsDeleteModalOpen(true)}
             disabled={isDeleting}
           >
             {isDeleting ? "Deleting..." : "Delete Aim"}
           </Button>
         </div>
       </main>
+
+      <ConfirmModal
+        isOpen={isDeleteModalOpen}
+        title="Delete Aim?"
+        message="Are you sure you want to delete this Aim? Your progress and streak will be permanently lost."
+        confirmLabel={isDeleting ? "Deleting..." : "Delete"}
+        cancelLabel="Cancel"
+        onConfirm={async () => {
+          if (isDeleting) return;
+          setIsDeleting(true);
+          try {
+            await deleteAim(aimId);
+            setIsDeleteModalOpen(false);
+            router.push("/");
+          } catch (err) {
+            console.error("Failed to delete aim", err);
+            setIsDeleting(false);
+            setIsDeleteModalOpen(false);
+          }
+        }}
+        onCancel={() => setIsDeleteModalOpen(false)}
+        isDestructive={true}
+      />
     </div>
   );
 }
