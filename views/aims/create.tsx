@@ -1,16 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useAuth } from "@/context/auth-context";
-import { createAim, getUserAims } from "@/service/aims";
+import { useAims } from "@/context/aims-context";
 import { Input } from "@/components/input";
 import { Button } from "@/components/button";
 
 export default function CreateAimView() {
   const router = useRouter();
-  const { user } = useAuth();
+  
+  const { aims, loading: aimsLoading, createAimAction } = useAims();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -19,27 +19,7 @@ export default function CreateAimView() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Focus validation states
-  const [isLoadingCheck, setIsLoadingCheck] = useState(true);
-  const [hasActiveAim, setHasActiveAim] = useState(false);
-
-  useEffect(() => {
-    if (!user) return;
-
-    const checkActiveAims = async () => {
-      try {
-        const aims = await getUserAims(user.uid);
-        const active = aims.some((aim) => !aim.completed);
-        setHasActiveAim(active);
-      } catch (err) {
-        console.error("Failed to query active aims", err);
-      } finally {
-        setIsLoadingCheck(false);
-      }
-    };
-
-    checkActiveAims();
-  }, [user]);
+  const hasActiveAim = aims.some((aim) => !aim.completed);
 
   const handleAddStep = () => {
     setSteps([...steps, ""]);
@@ -58,7 +38,7 @@ export default function CreateAimView() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || hasActiveAim) return;
+    if (hasActiveAim) return;
 
     setError(null);
 
@@ -87,12 +67,12 @@ export default function CreateAimView() {
         completed: false,
       }));
 
-      await createAim(user.uid, {
-        title: title.trim(),
-        description: description.trim(),
+      await createAimAction(
+        title.trim(),
+        description.trim(),
         deadline,
-        steps: formattedSteps,
-      });
+        formattedSteps
+      );
 
       router.push("/");
     } catch (err) {
@@ -103,7 +83,7 @@ export default function CreateAimView() {
     }
   };
 
-  if (isLoadingCheck) {
+  if (aimsLoading) {
     return (
       <div className="flex min-h-full items-center justify-center bg-background px-4">
         <p className="text-sm text-secondary animate-pulse">Checking focused aims...</p>

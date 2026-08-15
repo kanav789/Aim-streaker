@@ -3,16 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useAuth } from "@/context/auth-context";
-import {
-  getAimById,
-  updateAimSteps,
-  checkInAimDaily,
-  completeAim,
-  deleteAim,
-  type Aim,
-  type AimStep,
-} from "@/service/aims";
+import { useAims } from "@/context/aims-context";
+import { DetailsSkeleton } from "@/components/details-skeleton";
+import type { Aim, AimStep } from "@/service/aims";
 import { Button } from "@/components/button";
 import { ConfirmModal } from "@/components/confirm-modal";
 
@@ -22,41 +15,30 @@ interface AimDetailsViewProps {
 
 export default function AimDetailsView({ aimId }: AimDetailsViewProps) {
   const router = useRouter();
-  const { user } = useAuth();
 
-  const [aim, setAim] = useState<Aim | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    aims,
+    loading: aimsLoading,
+    updateAimStepsAction,
+    checkInAimDailyAction,
+    completeAimAction,
+    deleteAimAction,
+  } = useAims();
+
   const [checkingIn, setCheckingIn] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Fetch Aim Details
+  const aim = aims.find((a) => a.id === aimId) || null;
+
   useEffect(() => {
-    if (!user) return;
-
-    const fetchAim = async () => {
-      try {
-        const data = await getAimById(aimId);
-        if (!data) {
-          setError("Aim not found.");
-          return;
-        }
-        if (data.userId !== user.uid) {
-          setError("Access denied.");
-          return;
-        }
-        setAim(data);
-      } catch (err) {
-        console.error(err);
-        setError("Error loading Aim details.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAim();
-  }, [aimId, user]);
+    if (!aimsLoading && !aim) {
+      setError("Aim not found.");
+    } else {
+      setError(null);
+    }
+  }, [aimsLoading, aim]);
 
   const handleStepToggle = async (stepId: string) => {
     if (!aim) return;
@@ -77,15 +59,7 @@ export default function AimDetailsView({ aimId }: AimDetailsViewProps) {
     const progress = Math.round((completedCount / updatedSteps.length) * 100);
 
     try {
-      await updateAimSteps(aimId, updatedSteps, progress);
-      setAim((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          steps: updatedSteps,
-          progress,
-        };
-      });
+      await updateAimStepsAction(aimId, updatedSteps, progress);
     } catch (err) {
       console.error("Failed to update steps", err);
     }
@@ -106,15 +80,7 @@ export default function AimDetailsView({ aimId }: AimDetailsViewProps) {
     }
 
     try {
-      await checkInAimDaily(aimId, newStreak, todayStr);
-      setAim((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          streak: newStreak,
-          lastCheckInDate: todayStr,
-        };
-      });
+      await checkInAimDailyAction(aimId, newStreak, todayStr);
     } catch (err) {
       console.error("Failed to check in", err);
     } finally {
@@ -126,15 +92,7 @@ export default function AimDetailsView({ aimId }: AimDetailsViewProps) {
     if (!aim) return;
 
     try {
-      await completeAim(aimId);
-      setAim((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          completed: true,
-          progress: 100,
-        };
-      });
+      await completeAimAction(aimId);
     } catch (err) {
       console.error("Failed to complete Aim", err);
     }
@@ -172,12 +130,8 @@ export default function AimDetailsView({ aimId }: AimDetailsViewProps) {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-full flex-1 flex-col justify-center items-center">
-        <p className="text-sm text-secondary animate-pulse">Loading Aim details...</p>
-      </div>
-    );
+  if (aimsLoading) {
+    return <DetailsSkeleton />;
   }
 
   if (error || !aim) {
@@ -381,7 +335,7 @@ export default function AimDetailsView({ aimId }: AimDetailsViewProps) {
           if (isDeleting) return;
           setIsDeleting(true);
           try {
-            await deleteAim(aimId);
+            await deleteAimAction(aimId);
             setIsDeleteModalOpen(false);
             router.push("/");
           } catch (err) {

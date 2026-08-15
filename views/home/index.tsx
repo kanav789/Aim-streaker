@@ -2,100 +2,29 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useAuth } from "@/context/auth-context";
-import { getUserAims, type Aim } from "@/service/aims";
-import {
-  getUserProfile,
-  updateGlobalStreakAndCoins,
-  deductCoinsForBrokenStreak,
-} from "@/service/user";
+import { useAims } from "@/context/aims-context";
+import { DashboardSkeleton } from "@/components/dashboard-skeleton";
+import type { Aim } from "@/service/aims";
 
 export default function HomeView() {
-  const { user } = useAuth();
+  const {
+    aims,
+    profile,
+    loading: aimsLoading,
+    handleGlobalCheckInAction,
+  } = useAims();
 
-  const [aims, setAims] = useState<Aim[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [globalStreak, setGlobalStreak] = useState<number>(0);
-  const [hasCheckedInToday, setHasCheckedInToday] = useState<boolean>(false);
-  const [userName, setUserName] = useState<string>("Streaker");
-  const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [mounted, setMounted] = useState<boolean>(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Fetch active aims and load global habit streak from Firestore
-  useEffect(() => {
-    if (!mounted || !user) return;
-
-    const fetchDashboardData = async () => {
-      try {
-        const userAims = await getUserAims(user.uid);
-        setAims(userAims);
-
-        // Fetch User Profile from Firestore
-        const userProfile = await getUserProfile(user.uid, "User");
-        setUserName(userProfile.name || "Streaker");
-        setAvatarUrl(userProfile.avatarUrl || "");
-
-        const todayStr = new Date().toLocaleDateString("en-CA");
-        const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
-
-        let streakCount = userProfile.globalStreak || 0;
-        let checkedIn = false;
-
-        if (userProfile.lastGlobalCheckInDate === todayStr) {
-          checkedIn = true;
-        } else if (userProfile.lastGlobalCheckInDate === yesterdayStr) {
-          checkedIn = false;
-        } else if (userProfile.lastGlobalCheckInDate) {
-          // Streak broken: Reset globalStreak to 0 and deduct 5 coins
-          if (streakCount > 0) {
-            streakCount = 0;
-            await deductCoinsForBrokenStreak(user.uid, -5);
-          }
-        }
-
-        setGlobalStreak(streakCount);
-        setHasCheckedInToday(checkedIn);
-      } catch (err) {
-        console.error("Failed to load dashboard data from Firestore", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDashboardData();
-  }, [user, mounted]);
-
   const handleGlobalCheckIn = async () => {
-    if (hasCheckedInToday || !user) return;
-
     try {
-      const userProfile = await getUserProfile(user.uid, "User");
-      
-      const todayStr = new Date().toLocaleDateString("en-CA");
-      const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
-
-      let newStreak = userProfile.globalStreak || 0;
-
-      if (
-        userProfile.lastGlobalCheckInDate === yesterdayStr ||
-        (newStreak === 0 && !userProfile.lastGlobalCheckInDate)
-      ) {
-        newStreak += 1;
-      } else if (userProfile.lastGlobalCheckInDate !== todayStr) {
-        newStreak = 1;
-      }
-
-      // Update Firestore: save new global streak and add +1 coin!
-      await updateGlobalStreakAndCoins(user.uid, newStreak, todayStr, 1);
-
-      setGlobalStreak(newStreak);
-      setHasCheckedInToday(true);
+      await handleGlobalCheckInAction();
     } catch (err) {
-      console.error("Failed to record global check-in in Firestore", err);
+      console.error("Failed to record global check-in", err);
     }
   };
 
@@ -140,6 +69,15 @@ export default function HomeView() {
       </div>
     );
   }
+
+  if (aimsLoading) {
+    return <DashboardSkeleton />;
+  }
+
+  const userName = profile?.name || "Streaker";
+  const avatarUrl = profile?.avatarUrl || "";
+  const globalStreak = profile?.globalStreak || 0;
+  const hasCheckedInToday = profile?.lastGlobalCheckInDate === new Date().toLocaleDateString("en-CA");
 
   const weekDates = getWeekDates();
   const weekdaysLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -227,9 +165,7 @@ export default function HomeView() {
 
       {/* Aims streak list */}
       <div className="flex flex-col gap-5">
-        {loading ? (
-          <div className="h-64 rounded-[2rem] bg-surface border border-border animate-pulse" />
-        ) : activeAims.length === 0 ? (
+        {activeAims.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center rounded-[2rem] border border-border bg-surface p-8 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-650 mb-4 border border-zinc-900">
