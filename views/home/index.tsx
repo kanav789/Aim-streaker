@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useAims } from "@/context/aims-context";
 import { DashboardSkeleton } from "@/components/dashboard-skeleton";
+import { useAims } from "@/context/aims-context";
 import { getLocalYYYYMMDD } from "@/service/date";
-import type { Aim } from "@/service/aims";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+// @ts-ignore
+import quotes from "success-motivational-quotes";
 
 export default function HomeView() {
   const {
@@ -82,14 +83,45 @@ export default function HomeView() {
 
   const weekDates = getWeekDates();
   const weekdaysLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  
+
   // Find the highest streak among all active aims
   const activeAims = aims.filter((a) => !a.completed);
   const maxStreakVal = activeAims.length > 0 ? Math.max(...activeAims.map((a) => a.streak)) : 0;
 
+  // Get daily quote deterministically without repeat for 10+ days (actually ~2,000 days since there are 2,000+ quotes)
+  const getDailyQuote = () => {
+    try {
+      const allQuotes = quotes.getAllQuotes();
+      if (!allQuotes || allQuotes.length === 0) {
+        return {
+          body: "Discipline today, freedom tomorrow.",
+          by: "Unknown"
+        };
+      }
+      const localDate = new Date();
+      const daysSinceEpoch = Math.floor(
+        new Date(localDate.getFullYear(), localDate.getMonth(), localDate.getDate()).getTime() /
+        (1000 * 60 * 60 * 24)
+      );
+      const selected = allQuotes[daysSinceEpoch % allQuotes.length];
+      return {
+        body: selected.body || "Discipline today, freedom tomorrow.",
+        by: selected.by || "Unknown"
+      };
+    } catch (err) {
+      console.error("Failed to load daily quote from success-motivational-quotes", err);
+      return {
+        body: "Discipline today, freedom tomorrow.",
+        by: "Unknown"
+      };
+    }
+  };
+
+  const dailyQuote = getDailyQuote();
+
   return (
     <div className="flex min-h-full flex-1 flex-col px-4 pt-6 pb-28 relative bg-black text-white">
-      
+
       {/* Hello user header */}
       <div className="mb-6 flex justify-between items-center">
         <div>
@@ -118,13 +150,12 @@ export default function HomeView() {
       </div>
 
       {/* Repeat days weekly calendar card */}
-      <div 
+      <div
         onClick={handleGlobalCheckIn}
-        className={`mb-6 rounded-[2rem] bg-surface border p-5 relative overflow-hidden transition-all duration-300 select-none ${
-          hasCheckedInToday
+        className={`mb-6 rounded-[2rem] bg-surface border p-5 relative overflow-hidden transition-all duration-300 select-none ${hasCheckedInToday
             ? "border-border"
             : "border-accent/45 cursor-pointer hover:border-accent active:scale-[0.99] shadow-[0_0_15px_rgba(163,255,18,0.05)]"
-        }`}
+          }`}
       >
         <div className="flex justify-between items-center mb-4">
           <div>
@@ -150,17 +181,100 @@ export default function HomeView() {
                   {weekdaysLabels[idx]}
                 </span>
                 <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
-                    isDateToday
+                  className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${isDateToday
                       ? "bg-accent/20 text-accent ring-1 ring-accent/50 shadow-[0_0_10px_rgba(163,255,18,0.2)]"
                       : "bg-zinc-950 text-zinc-400 border border-zinc-900"
-                  }`}
+                    }`}
                 >
                   {dayNum}
                 </div>
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Daily Motivational Quote Card */}
+      <div className="mb-6 rounded-[2rem] bg-zinc-950/65 border border-zinc-900/60 p-5 relative overflow-hidden flex items-center justify-between">
+        {/* Left Side: Quote Content */}
+        <div className="flex-1 pr-4 flex items-start gap-2.5">
+          <span className="text-3xl text-accent font-serif select-none leading-none">“</span>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-zinc-150 leading-relaxed italic">
+              "{dailyQuote.body}"
+            </p>
+            <p className="text-[10px] text-zinc-500 font-bold mt-2.5">
+              — {dailyQuote.by}
+            </p>
+          </div>
+        </div>
+
+        {/* Right Side: Mountain Graphic SVG */}
+        <div className="w-[150px] h-[70px] shrink-0 relative overflow-hidden select-none">
+          <svg viewBox="0 0 520 240" fill="none" className="absolute bottom-0 right-0 w-full h-full">
+            <defs>
+              <linearGradient id="peak" x1="360" y1="35" x2="445" y2="205" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#202720" />
+                <stop offset="1" stopColor="#080B08" />
+              </linearGradient>
+              <linearGradient id="leftFace" x1="335" y1="65" x2="405" y2="205" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#151B15" />
+                <stop offset="1" stopColor="#060806" />
+              </linearGradient>
+              <linearGradient id="rightFace" x1="405" y1="65" x2="485" y2="205" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#0D120E" />
+                <stop offset="1" stopColor="#030503" />
+              </linearGradient>
+              <radialGradient id="greenGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+                gradientTransform="translate(406 68) rotate(90) scale(115)">
+                <stop stopColor="#9CFF3D" stopOpacity=".24" />
+                <stop offset=".45" stopColor="#9CFF3D" stopOpacity=".07" />
+                <stop offset="1" stopColor="#9CFF3D" stopOpacity="0" />
+              </radialGradient>
+              <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%">
+                <feGaussianBlur stdDeviation="5" />
+              </filter>
+            </defs>
+
+            {/* subtle atmospheric glow behind the summit */}
+            <ellipse cx="408" cy="92" rx="112" ry="100" fill="url(#greenGlow)" />
+
+            {/* distant ridge */}
+            <path d="M160 214 L215 182 L250 196 L286 163 L315 184 L350 151 L385 179 L420 147 L455 179 L520 158 L520 240 L160 240Z"
+              fill="#0A0D0A" />
+
+            {/* main mountain silhouette */}
+            <path d="M250 240 L282 205 L316 178 L343 142 L368 108 L399 65 L412 43 L425 82 L446 119 L470 151 L492 175 L520 196 L520 240Z"
+              fill="#070907" />
+
+            {/* illuminated left face */}
+            <path d="M282 205 L316 178 L343 142 L368 108 L399 65 L412 43 L404 93 L390 127 L374 158 L354 190 L330 220 L305 240 L250 240Z"
+              fill="url(#leftFace)" />
+
+            {/* darker right face */}
+            <path d="M412 43 L425 82 L446 119 L470 151 L492 175 L520 196 L520 240 L395 240 L374 158 L390 127 L404 93Z"
+              fill="url(#rightFace)" />
+
+            {/* subtle summit ridge */}
+            <path d="M399 65 L412 43 L425 82 L412 73 Z"
+              fill="#2B332B" opacity=".8" />
+
+            {/* foreground base */}
+            <path d="M0 240 L0 232 L72 219 L135 225 L205 208 L270 222 L332 205 L390 218 L455 205 L520 214 L520 240Z"
+              fill="#050705" />
+
+            {/* flag pole */}
+            <path d="M412 44 L412 13"
+              stroke="#9CFF3D" strokeWidth="2.8" strokeLinecap="round" />
+
+            {/* flag */}
+            <path d="M413 14 C429 14 441 10 452 14 L444 21 L452 28 C440 24 428 26 413 28Z"
+              fill="#9CFF3D" />
+
+            {/* tiny summit light */}
+            <circle cx="412" cy="44" r="3.5" fill="#9CFF3D" opacity=".95" />
+            <circle cx="412" cy="44" r="10" fill="#9CFF3D" opacity=".13" filter="url(#softGlow)" />
+          </svg>
         </div>
       </div>
 
@@ -193,7 +307,7 @@ export default function HomeView() {
               href="/aims/new"
               className="inline-flex items-center justify-center rounded-xl bg-accent px-5 py-3 text-xs font-bold text-black transition hover:bg-accent/90 hover:scale-[1.02] active:scale-[0.98]"
             >
-              + Launch Your First Aim
+              Launch Your First Aim
             </Link>
           </div>
         ) : (
@@ -203,7 +317,7 @@ export default function HomeView() {
             return (
               <Link key={aim.id} href={`/aims/${aim.id}`} className="group block">
                 <div className="rounded-[2rem] bg-surface border border-border p-5 transition-all duration-300 group-hover:border-zinc-700/80 group-hover:scale-[1.01] active:scale-[0.99] shadow-md">
-                  
+
                   {/* Card Header */}
                   <div className="flex justify-between items-start">
                     <div>
@@ -252,7 +366,7 @@ export default function HomeView() {
                         className="transition-all duration-500 ease-out"
                       />
                     </svg>
-                    
+
                     {/* Inner content overlay */}
                     <div className="absolute w-[80%] h-[80%] bg-white rounded-full flex flex-col items-center justify-center shadow-lg">
                       <span className="text-4xl font-black text-black tracking-tight">{aim.streak}</span>
@@ -276,7 +390,7 @@ export default function HomeView() {
       {/* Floating Bottom capsule Navigation */}
       <div className="fixed bottom-6 inset-x-4 max-w-[398px] mx-auto z-45">
         <div className="flex items-center justify-around h-16 bg-zinc-950/90 backdrop-blur-md border border-zinc-900 rounded-full px-2 shadow-[0_10px_35px_rgba(0,0,0,0.7)]">
-          
+
           {/* Icon 1: Profile/Home (Active) */}
           <Link href="/" className="relative flex items-center justify-center w-11 h-11 rounded-full bg-accent/15 text-accent shadow-[0_0_15px_rgba(163,255,18,0.2)]">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">

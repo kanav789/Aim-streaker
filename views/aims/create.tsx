@@ -161,7 +161,7 @@ export default function CreateAimView() {
         <form onSubmit={handleSubmit} className="flex flex-1 flex-col gap-6">
           <Input
             label="Aim Title"
-            placeholder="e.g. Become a Backend Developer"
+            placeholder="e.g. Master a skill, build a habit, or achieve a target"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
@@ -170,7 +170,7 @@ export default function CreateAimView() {
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-secondary">Description</label>
             <textarea
-              placeholder="e.g. Master Node.js, databases, and build scalable systems..."
+              placeholder="Describe the target milestones and daily routines needed to achieve your aim..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full rounded-md border border-border bg-surface px-3 py-2 text-primary outline-none transition placeholder:text-secondary/60 focus:border-accent min-h-[100px] text-sm"
@@ -207,7 +207,7 @@ export default function CreateAimView() {
                     {String(index + 1).padStart(2, "0")}.
                   </span>
                   <input
-                    placeholder={`Milestone ${index + 1} (e.g. Buy gym card)`}
+                    placeholder={`Milestone ${index + 1} (e.g. Acquire resources)`}
                     value={step}
                     onChange={(e) => handleStepChange(index, e.target.value)}
                     className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-primary outline-none transition placeholder:text-secondary/60 focus:border-accent"
@@ -263,7 +263,7 @@ export default function CreateAimView() {
                     {String(index + 1).padStart(2, "0")}.
                   </span>
                   <input
-                    placeholder={`Daily Habit ${index + 1} (e.g. Exercise 30m)`}
+                    placeholder={`Daily Habit ${index + 1} (e.g. Practice 30 mins)`}
                     value={step}
                     onChange={(e) => handleRecurringStepChange(index, e.target.value)}
                     className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-primary outline-none transition placeholder:text-secondary/60 focus:border-accent"
