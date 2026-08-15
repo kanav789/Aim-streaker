@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Header } from "@/components/header";
 import { useAuth } from "@/context/auth-context";
 import { getUserAims, type Aim } from "@/service/aims";
 import {
@@ -19,6 +18,7 @@ export default function HomeView() {
   const [globalStreak, setGlobalStreak] = useState<number>(0);
   const [hasCheckedInToday, setHasCheckedInToday] = useState<boolean>(false);
   const [userName, setUserName] = useState<string>("Streaker");
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [mounted, setMounted] = useState<boolean>(false);
 
   useEffect(() => {
@@ -37,6 +37,7 @@ export default function HomeView() {
         // Fetch User Profile from Firestore
         const userProfile = await getUserProfile(user.uid, "User");
         setUserName(userProfile.name || "Streaker");
+        setAvatarUrl(userProfile.avatarUrl || "");
 
         const todayStr = new Date().toLocaleDateString("en-CA");
         const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
@@ -49,7 +50,7 @@ export default function HomeView() {
         } else if (userProfile.lastGlobalCheckInDate === yesterdayStr) {
           checkedIn = false;
         } else if (userProfile.lastGlobalCheckInDate) {
-          // Streak broken: Deduct 5 coins and reset globalStreak to 0
+          // Streak broken: Reset globalStreak to 0 and deduct 5 coins
           if (streakCount > 0) {
             streakCount = 0;
             await deductCoinsForBrokenStreak(user.uid, -5);
@@ -98,165 +99,147 @@ export default function HomeView() {
     }
   };
 
-  const getFormattedDate = () => {
-    return new Date().toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
+  const getMockupFormattedDate = () => {
+    const d = new Date();
+    const weekday = d.toLocaleDateString("en-US", { weekday: "long" });
+    const day = d.getDate();
+    const month = d.toLocaleDateString("en-US", { month: "long" });
+    const year = d.getFullYear();
+    return `${weekday}, ${day} ${month}, ${year}`;
   };
 
-  const getDaysLeftLabel = (deadlineStr: string, completed: boolean) => {
-    if (completed) return { text: "Completed 🎉", class: "text-green-500" };
+  const getWeekDates = () => {
+    const now = new Date();
+    const day = now.getDay(); // 0 is Sunday, 1 is Monday
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(now.setDate(diff));
 
-    const target = new Date(deadlineStr + "T00:00:00");
-    const today = new Date(new Date().toLocaleDateString("en-CA") + "T00:00:00");
-    const diffTime = target.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) {
-      return { text: `${Math.abs(diffDays)}d overdue ⚠️`, class: "text-accent" };
-    } else if (diffDays === 0) {
-      return { text: "Due today! ⚡", class: "text-yellow-400 font-semibold" };
-    } else {
-      return { text: `${diffDays}d left`, class: "text-secondary" };
+    const week = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + i);
+      week.push(date);
     }
+    return week;
+  };
+
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return (
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear()
+    );
   };
 
   if (!mounted) {
     return (
-      <div className="flex min-h-full flex-1 flex-col">
-        <Header />
-        <main className="flex flex-1 flex-col px-4 pt-4 items-center justify-center">
-          <p className="text-sm text-secondary animate-pulse">Loading dashboard...</p>
-        </main>
+      <div className="flex min-h-full flex-1 flex-col items-center justify-center p-6 bg-black text-white">
+        <div className="w-12 h-12 rounded-full border-4 border-accent border-t-transparent animate-spin mb-4" />
+        <p className="text-sm text-zinc-500 animate-pulse">Loading Aim Streaker...</p>
       </div>
     );
   }
 
+  const weekDates = getWeekDates();
+  const weekdaysLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  
+  // Find the highest streak among all active aims
+  const activeAims = aims.filter((a) => !a.completed);
+  const maxStreakVal = activeAims.length > 0 ? Math.max(...activeAims.map((a) => a.streak)) : 0;
+
   return (
-    <div className="flex min-h-full flex-1 flex-col pb-12">
-      <Header />
+    <div className="flex min-h-full flex-1 flex-col px-4 pt-6 pb-28 relative bg-black text-white">
+      
+      {/* Hello user header */}
+      <div className="mb-6 flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-1.5">
+            Hello, {userName}! <span className="animate-bounce origin-bottom-right inline-block">👋</span>
+          </h2>
+          <p className="text-xs text-zinc-500 font-medium mt-0.5">{getMockupFormattedDate()}</p>
+        </div>
+        <Link href="/profile" aria-label="Open profile">
+          <div className="relative w-11 h-11 rounded-full border border-zinc-850 overflow-hidden bg-zinc-900 flex items-center justify-center hover:scale-105 active:scale-95 transition duration-200 shadow-md">
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt="Profile"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <img
+                src="/images/beginner-group/avatar-3.jpeg"
+                alt="Profile Default"
+                className="w-full h-full object-cover"
+              />
+            )}
+          </div>
+        </Link>
+      </div>
 
-      <main className="flex flex-1 flex-col px-4 pt-4">
-        {/* Welcome Section */}
-        <div className="mb-6 flex justify-between items-center">
+      {/* Repeat days weekly calendar card */}
+      <div 
+        onClick={handleGlobalCheckIn}
+        className={`mb-6 rounded-[2rem] bg-surface border p-5 relative overflow-hidden transition-all duration-300 select-none ${
+          hasCheckedInToday
+            ? "border-border"
+            : "border-accent/45 cursor-pointer hover:border-accent active:scale-[0.99] shadow-[0_0_15px_rgba(163,255,18,0.05)]"
+        }`}
+      >
+        <div className="flex justify-between items-center mb-4">
           <div>
-            <h2 className="text-xl font-bold text-primary">Hey, {userName} 👋</h2>
-            <p className="text-sm text-secondary">Let's work towards your aims today.</p>
+            <span className="text-sm font-bold text-white tracking-tight">Repeat days</span>
+            <span className="text-[10px] text-zinc-500 block font-medium mt-0.5">
+              {hasCheckedInToday ? `Daily streak: ${globalStreak} days 🔥` : "Tap card to check-in today ⚡"}
+            </span>
           </div>
+          <button className="text-zinc-500 hover:text-white transition p-1">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" />
+            </svg>
+          </button>
         </div>
 
-        {/* Global Dashboard Grid */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          {/* Daily Streak Habit Tracker */}
-          <div
-            onClick={handleGlobalCheckIn}
-            className={`flex flex-col justify-between rounded-2xl border p-4 transition-all duration-300 ${
-              hasCheckedInToday
-                ? "border-border bg-surface/50 cursor-default"
-                : "border-accent/40 bg-surface hover:border-accent cursor-pointer active:scale-[0.98]"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-secondary">
-                Daily Streak
-              </span>
-              <div
-                className={`flex h-7 w-7 items-center justify-center rounded-full ${
-                  hasCheckedInToday ? "bg-green-500/10 text-green-500" : "bg-accent/10 text-accent"
-                }`}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  className={`h-4.5 w-4.5 ${globalStreak > 0 ? "animate-pulse" : ""}`}
+        <div className="flex justify-between items-center">
+          {weekDates.map((date, idx) => {
+            const dayNum = date.getDate();
+            const isDateToday = isToday(date);
+            return (
+              <div key={idx} className="flex flex-col items-center flex-1">
+                <span className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${isDateToday ? "text-accent" : "text-zinc-500"}`}>
+                  {weekdaysLabels[idx]}
+                </span>
+                <div
+                  className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
+                    isDateToday
+                      ? "bg-accent/20 text-accent ring-1 ring-accent/50 shadow-[0_0_10px_rgba(163,255,18,0.2)]"
+                      : "bg-zinc-950 text-zinc-400 border border-zinc-900"
+                  }`}
                 >
-                  <path
-                    fillRule="evenodd"
-                    d="M12.969 18.943c-2.072 0-3.75-1.678-3.75-3.75 0-1.802 1.272-3.308 2.993-3.666a.75.75 0 0 1 .843.916c-.22.846-.178 1.704.092 2.457 1.002-.68 1.782-1.684 2.228-2.87a.75.75 0 0 1 1.272-.112c1.082 1.488 1.583 3.324 1.258 5.17a6.75 6.75 0 0 1-4.887 5.093c-.015.004-.03.007-.044.01-.19.043-.388.067-.591.067ZM11.238 2.228a.75.75 0 0 1 .941.87c-.883 4.412 1.442 8.35 4.394 10.354a.75.75 0 0 1 .194 1.129 9 9 0 1 1-13.882-9.4c.03-.008.06-.016.09-.024.167-.044.341-.068.52-.068a3.745 3.745 0 0 1 3.428 2.234 7.498 7.498 0 0 1 4.315-5.129ZM8.25 15.193a2.25 2.25 0 1 1 4.5 0c0 1.242-.99 2.25-2.25 2.25s-2.25-1.008-2.25-2.25Z"
-                    clipRule="evenodd"
-                  />
-                </svg>
+                  {dayNum}
+                </div>
               </div>
-            </div>
-            <div className="mt-4">
-              <span className="text-2xl font-extrabold tracking-tight text-primary font-mono">
-                {globalStreak}
-              </span>
-              <span className="text-[10px] text-secondary block mt-0.5 font-medium">
-                {hasCheckedInToday ? "Checked in today!" : "Click to check in"}
-              </span>
-            </div>
-          </div>
-
-          {/* Today Date */}
-          <div className="flex flex-col justify-between rounded-2xl border border-border bg-surface p-4 transition-all duration-300 hover:border-secondary/30">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-secondary">
-                Today
-              </span>
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                  className="h-4.5 w-4.5"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z"
-                  />
-                </svg>
-              </div>
-            </div>
-            <div className="mt-4">
-              <span className="block text-base font-bold text-primary truncate leading-tight">
-                {getFormattedDate()}
-              </span>
-              <span className="text-[10px] text-secondary mt-0.5 block font-medium">
-                Calendar day
-              </span>
-            </div>
-          </div>
+            );
+          })}
         </div>
+      </div>
 
-        {/* Section Title */}
-        <div className="flex items-center justify-between mb-4 mt-2">
-          <h3 className="text-sm font-semibold text-primary uppercase tracking-wider">
-            {aims.some((aim) => !aim.completed) ? "Your Active Aim" : "Your Active Aims"}
-          </h3>
-          {!aims.some((aim) => !aim.completed) ? (
-            <Link
-              href="/aims/new"
-              className="text-xs font-semibold text-accent hover:underline flex items-center gap-1"
-            >
-              + Create Aim
-            </Link>
-          ) : null}
-        </div>
-
-        {/* Loading / Aims list */}
+      {/* Aims streak list */}
+      <div className="flex flex-col gap-5">
         {loading ? (
-          <div className="flex flex-col gap-4">
-            <div className="h-28 rounded-2xl border border-border bg-surface/50 animate-pulse" />
-            <div className="h-28 rounded-2xl border border-border bg-surface/50 animate-pulse" />
-          </div>
-        ) : aims.length === 0 ? (
-          /* Empty State */
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-surface p-8 text-center mt-2">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-border text-secondary mb-4">
+          <div className="h-64 rounded-[2rem] bg-surface border border-border animate-pulse" />
+        ) : activeAims.length === 0 ? (
+          /* Empty state */
+          <div className="flex flex-col items-center justify-center rounded-[2rem] border border-border bg-surface p-8 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-650 mb-4 border border-zinc-900">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
                 strokeWidth={2}
                 stroke="currentColor"
-                className="h-6 w-6 text-secondary/70"
+                className="h-6 w-6 text-zinc-500"
               >
                 <path
                   strokeLinecap="round"
@@ -265,81 +248,122 @@ export default function HomeView() {
                 />
               </svg>
             </div>
-            <h4 className="text-base font-bold text-primary mb-1">Set Your Target</h4>
-            <p className="text-xs text-secondary leading-relaxed max-w-[280px] mb-6">
-              You haven't launched any Aims yet. Build your execution plan, stay consistent, and
-              track your progress.
+            <h4 className="text-base font-extrabold text-white mb-1">Set Your Target</h4>
+            <p className="text-xs text-zinc-400 leading-relaxed max-w-[260px] mb-6">
+              You don't have any active Aims right now. Set a goal, form a habit, and start tracking your streak!
             </p>
             <Link
               href="/aims/new"
-              className="inline-flex items-center justify-center rounded-xl bg-accent px-5 py-3 text-xs font-bold text-background transition hover:bg-accent/90 hover:scale-[1.02] active:scale-[0.98]"
+              className="inline-flex items-center justify-center rounded-xl bg-accent px-5 py-3 text-xs font-bold text-black transition hover:bg-accent/90 hover:scale-[1.02] active:scale-[0.98]"
             >
               + Launch Your First Aim
             </Link>
           </div>
         ) : (
-          /* Aims List Cards */
-          <div className="flex flex-col gap-4">
-            {aims.map((aim) => {
-              const deadlineDetails = getDaysLeftLabel(aim.deadline, aim.completed);
-              const completedSteps = aim.steps.filter((s) => s.completed).length;
-              const totalSteps = aim.steps.length;
-
-              return (
-                <Link key={aim.id} href={`/aims/${aim.id}`}>
-                  <div className="group block rounded-2xl border border-border bg-surface p-4 transition-all duration-300 hover:border-secondary/30 hover:scale-[1.01] active:scale-[0.99] cursor-pointer">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h4 className="text-base font-bold text-primary group-hover:text-accent transition">
-                          {aim.title}
-                        </h4>
-                        <span className="text-[10px] text-secondary font-mono mt-0.5 block">
-                          {completedSteps} of {totalSteps} steps completed
-                        </span>
-                      </div>
-                      <span className={`text-xs font-medium ${deadlineDetails.class}`}>
-                        {deadlineDetails.text}
+          /* List of Aims */
+          activeAims.map((aim) => {
+            const isLongest = aim.streak === maxStreakVal && maxStreakVal > 0;
+            return (
+              <Link key={aim.id} href={`/aims/${aim.id}`} className="group block">
+                <div className="rounded-[2rem] bg-surface border border-border p-5 transition-all duration-300 group-hover:border-zinc-700/80 group-hover:scale-[1.01] active:scale-[0.99] shadow-md">
+                  
+                  {/* Card Header */}
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-white">
+                        {isLongest ? "Longest Streak" : "Active Streak"}
                       </span>
+                      <h4 className="text-sm font-medium text-zinc-500 mt-1">{aim.title}</h4>
                     </div>
-
-                    {/* Mini Progress Bar */}
-                    <div className="mt-4 flex items-center gap-3">
-                      <div className="h-1.5 flex-1 rounded-full bg-border overflow-hidden">
-                        <div
-                          className="h-full bg-accent transition-all duration-300"
-                          style={{ width: `${aim.progress}%` }}
-                        />
-                      </div>
-                      <span className="text-xs font-bold text-primary font-mono shrink-0">
-                        {aim.progress}%
-                      </span>
-                    </div>
-
-                    {/* Streak flame indicator inside the card */}
-                    {!aim.completed && aim.streak > 0 ? (
-                      <div className="mt-3 flex items-center gap-1 text-[10px] text-secondary">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          className="h-3.5 w-3.5 text-accent animate-pulse"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M13.5 4.938a7 7 0 1 1-9.006 1.737c.2-.026.382.116.463.306.135.315.133.657-.005.979A3.5 3.5 0 1 0 11.25 9.75c0-1.077-.35-2.074-.944-2.883a.5.5 0 0 1 .1-.676c.404-.326.792-.72 1.15-1.171.127.135.247.278.358.428.188.257.348.536.478.835.086.2.285.326.505.297.009-.001.018-.003.028-.004a6.762 6.762 0 0 0 .635-1.84Z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                        <span>{aim.streak}d streak</span>
-                      </div>
-                    ) : null}
+                    <button className="text-zinc-500 hover:text-white transition p-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" />
+                      </svg>
+                    </button>
                   </div>
-                </Link>
-              );
-            })}
-          </div>
+
+                  {/* Circular progress container */}
+                  <div className="relative w-44 h-44 flex items-center justify-center mx-auto my-6">
+                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 120 120">
+                      <defs>
+                        <linearGradient id={`circle-grad-${aim.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#3b82f6" />
+                          <stop offset="100%" stopColor="#a3ff12" />
+                        </linearGradient>
+                      </defs>
+                      {/* Gray track circle */}
+                      <circle
+                        cx="60"
+                        cy="60"
+                        r="48"
+                        className="text-zinc-900"
+                        strokeWidth="9"
+                        stroke="currentColor"
+                        fill="transparent"
+                      />
+                      {/* Colored progress circle */}
+                      <circle
+                        cx="60"
+                        cy="60"
+                        r="48"
+                        stroke={`url(#circle-grad-${aim.id})`}
+                        strokeWidth="9"
+                        strokeDasharray={2 * Math.PI * 48}
+                        strokeDashoffset={2 * Math.PI * 48 * (1 - (aim.progress || 0) / 100)}
+                        strokeLinecap="round"
+                        fill="transparent"
+                        className="transition-all duration-500 ease-out"
+                      />
+                    </svg>
+                    
+                    {/* Inner content overlay */}
+                    <div className="absolute w-[80%] h-[80%] bg-white rounded-full flex flex-col items-center justify-center shadow-lg">
+                      <span className="text-4xl font-black text-black tracking-tight">{aim.streak}</span>
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-0.5">days</span>
+                    </div>
+                  </div>
+
+                  {/* Card Footer status info */}
+                  <div className="flex justify-between items-center text-[10px] font-mono text-zinc-500 border-t border-zinc-900 pt-3">
+                    <span>Progress: {aim.progress}%</span>
+                    <span>Deadline: {aim.deadline}</span>
+                  </div>
+
+                </div>
+              </Link>
+            );
+          })
         )}
-      </main>
+      </div>
+
+      {/* Floating Bottom capsule Navigation */}
+      <div className="fixed bottom-6 inset-x-4 max-w-[398px] mx-auto z-45">
+        <div className="flex items-center justify-around h-16 bg-zinc-950/90 backdrop-blur-md border border-zinc-900 rounded-full px-2 shadow-[0_10px_35px_rgba(0,0,0,0.7)]">
+          
+          {/* Icon 1: Profile/Home (Active) */}
+          <Link href="/" className="relative flex items-center justify-center w-11 h-11 rounded-full bg-accent/15 text-accent shadow-[0_0_15px_rgba(163,255,18,0.2)]">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+            </svg>
+          </Link>
+
+          {/* Icon 2: Statistics (Graph) */}
+          <Link href="/profile/rewards" className="flex items-center justify-center w-11 h-11 text-zinc-500 hover:text-white transition duration-200">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
+            </svg>
+          </Link>
+
+          {/* Icon 3: Plus button */}
+          <Link href="/aims/new" className="flex items-center justify-center w-11 h-11 text-zinc-500 hover:text-white transition duration-200">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+          </Link>
+
+        </div>
+      </div>
+
     </div>
   );
 }

@@ -7,10 +7,10 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: "bg-accent text-background hover:bg-accent/90",
+  primary: "bg-accent text-black hover:bg-accent/90 shadow-[0_4px_15px_rgba(163,255,18,0.15)]",
   secondary:
-    "border border-border bg-surface text-primary hover:border-secondary",
-  ghost: "bg-transparent text-secondary hover:text-primary",
+    "border border-zinc-800 bg-transparent text-white hover:bg-zinc-900/50",
+  ghost: "bg-transparent text-zinc-500 hover:text-white",
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -19,7 +19,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         type={type}
-        className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${className}`}
+        className={`inline-flex items-center justify-center rounded-2xl px-6 h-14 text-base font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98] ${variantClasses[variant]} ${className}`}
         {...props}
       />
     );
