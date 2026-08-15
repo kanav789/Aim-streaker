@@ -1,31 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useAuth } from "@/context/auth-context";
-import { getUserProfile, type UserProfile } from "@/service/user";
+import { useAims } from "@/context/aims-context";
 
 export default function RewardsView() {
-  const { user } = useAuth();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchProfile = async () => {
-      try {
-        const userProfile = await getUserProfile(user.uid, user.email || "");
-        setProfile(userProfile);
-      } catch (err) {
-        console.error("Failed to load rewards profile", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProfile();
-  }, [user]);
+  const { profile, loading } = useAims();
 
   // Mock Reward Items for background visual look
   const mockRewards = [

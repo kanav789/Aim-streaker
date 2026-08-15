@@ -7,13 +7,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { Input } from "@/components/input";
 import { useAuth } from "@/context/auth-context";
+import { useAims } from "@/context/aims-context";
 import { logout, updateUserPassword } from "@/service/auth";
-import {
-  getUserProfile,
-  updateUserName,
-  updateUserAvatar,
-  type UserProfile,
-} from "@/service/user";
+import { type UserProfile } from "@/service/user";
 import { FirebaseError } from "firebase/app";
 
 const BEGINNER_AVATARS = [
@@ -27,8 +23,8 @@ const BEGINNER_AVATARS = [
 export default function ProfileView() {
   const router = useRouter();
   const { user } = useAuth();
+  const { profile, updateUserNameAction, updateUserAvatarAction } = useAims();
   
-  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -41,21 +37,12 @@ export default function ProfileView() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const fetchProfile = async () => {
-    if (!user) return;
-    try {
-      const userProfile = await getUserProfile(user.uid, "");
-      setProfile(userProfile);
-      setEditName(userProfile.name || "");
-      setSelectedAvatar(userProfile.avatarUrl || "");
-    } catch (err) {
-      console.error("Failed to load user profile", err);
-    }
-  };
-
   useEffect(() => {
-    fetchProfile();
-  }, [user]);
+    if (profile) {
+      setEditName(profile.name || "");
+      setSelectedAvatar(profile.avatarUrl || "");
+    }
+  }, [profile]);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -99,18 +86,16 @@ export default function ProfileView() {
 
     try {
       // 1. Update display name in Firestore
-      await updateUserName(user.uid, editName.trim());
+      await updateUserNameAction(editName.trim());
 
       // 2. Update profile avatarUrl in Firestore
-      await updateUserAvatar(user.uid, selectedAvatar);
+      await updateUserAvatarAction(selectedAvatar);
 
       // 3. Update authentication password if requested
       if (isChangingPassword) {
         await updateUserPassword(profile.phone, currentPassword, newPassword);
       }
 
-      // Re-fetch profile to sync state, reset password fields
-      await fetchProfile();
       setIsEditing(false);
       setCurrentPassword("");
       setNewPassword("");

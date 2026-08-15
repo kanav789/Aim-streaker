@@ -1,4 +1,5 @@
 import { AuthProvider } from "@/context/auth-context";
+import { AimsProvider } from "@/context/aims-context";
 import type { Metadata } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -109,7 +110,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 
         {/* Mobile Viewport Container */}
         <div className="sm:hidden mx-auto flex min-h-full w-full max-w-[430px] flex-1 flex-col">
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <AimsProvider>{children}</AimsProvider>
+          </AuthProvider>
         </div>
       </body>
     </html>
