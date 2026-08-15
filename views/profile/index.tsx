@@ -232,6 +232,56 @@ export default function ProfileView() {
                   </svg>
                 </div>
               </Link>
+
+              {/* Terms of Service */}
+              <Link
+                href="/terms"
+                className="w-full flex items-center justify-between rounded-xl border border-border bg-zinc-950 px-4 py-3.5 text-sm font-medium text-zinc-400 transition hover:border-zinc-800 hover:text-white active:scale-[0.99]"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-base">📄</span>
+                  <span>Terms of Service</span>
+                </div>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="h-4 w-4 text-zinc-650"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m8.25 4.5 7.5 7.5-7.5 7.5"
+                  />
+                </svg>
+              </Link>
+
+              {/* Privacy Policy */}
+              <Link
+                href="/privacy"
+                className="w-full flex items-center justify-between rounded-xl border border-border bg-zinc-950 px-4 py-3.5 text-sm font-medium text-zinc-400 transition hover:border-zinc-800 hover:text-white active:scale-[0.99]"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-base">🔒</span>
+                  <span>Privacy Policy</span>
+                </div>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="h-4 w-4 text-zinc-650"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m8.25 4.5 7.5 7.5-7.5 7.5"
+                  />
+                </svg>
+              </Link>
             </div>
 
             <div className="mt-auto w-full pb-8 pt-8">

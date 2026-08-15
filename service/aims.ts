@@ -19,6 +19,11 @@ export interface AimStep {
   completedAt?: string;
 }
 
+export interface CheckInLog {
+  date: string;
+  completedSteps: string[];
+}
+
 export interface Aim {
   id?: string;
   userId: string;
@@ -26,11 +31,13 @@ export interface Aim {
   description: string;
   deadline: string; // YYYY-MM-DD
   steps: AimStep[];
+  recurringSteps: AimStep[];
   progress: number; // percentage (0 to 100)
   streak: number;
   lastCheckInDate?: string | null; // YYYY-MM-DD
   completed: boolean;
   createdAt: string; // ISO string
+  checkInHistory?: CheckInLog[];
 }
 
 const COLLECTION_NAME = "aims";
@@ -42,6 +49,7 @@ export async function createAim(
     description: string;
     deadline: string;
     steps: { id: string; text: string; completed: boolean }[];
+    recurringSteps: { id: string; text: string; completed: boolean }[];
   }
 ): Promise<string> {
   const newAim: Omit<Aim, "id"> = {
@@ -50,6 +58,7 @@ export async function createAim(
     description: aimData.description,
     deadline: aimData.deadline,
     steps: aimData.steps,
+    recurringSteps: aimData.recurringSteps,
     progress: 0,
     streak: 0,
     lastCheckInDate: null,
@@ -109,15 +118,42 @@ export async function updateAimSteps(
   });
 }
 
-export async function checkInAimDaily(
+export async function updateAimRecurringSteps(
   aimId: string,
-  newStreak: number,
-  lastCheckInDate: string
+  recurringSteps: AimStep[]
 ): Promise<void> {
   const docRef = doc(db, COLLECTION_NAME, aimId);
   await updateDoc(docRef, {
+    recurringSteps,
+  });
+}
+
+export async function checkInAimDaily(
+  aimId: string,
+  newStreak: number,
+  lastCheckInDate: string,
+  completedSteps: string[]
+): Promise<void> {
+  const docRef = doc(db, COLLECTION_NAME, aimId);
+  const docSnap = await getDoc(docRef);
+  let history: CheckInLog[] = [];
+
+  if (docSnap.exists()) {
+    history = docSnap.data().checkInHistory || [];
+  }
+
+  // Avoid inserting duplicates for the same day
+  if (!history.some((h) => h.date === lastCheckInDate)) {
+    history.push({
+      date: lastCheckInDate,
+      completedSteps,
+    });
+  }
+
+  await updateDoc(docRef, {
     streak: newStreak,
     lastCheckInDate,
+    checkInHistory: history,
   });
 }
 

@@ -16,11 +16,13 @@ export default function CreateAimView() {
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
   const [steps, setSteps] = useState<string[]>([""]);
+  const [recurringSteps, setRecurringSteps] = useState<string[]>([""]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const hasActiveAim = aims.some((aim) => !aim.completed);
 
+  // Milestones handlers
   const handleAddStep = () => {
     setSteps([...steps, ""]);
   };
@@ -34,6 +36,22 @@ export default function CreateAimView() {
     const nextSteps = [...steps];
     nextSteps[index] = value;
     setSteps(nextSteps);
+  };
+
+  // Daily Habits handlers
+  const handleAddRecurringStep = () => {
+    setRecurringSteps([...recurringSteps, ""]);
+  };
+
+  const handleRemoveRecurringStep = (index: number) => {
+    if (recurringSteps.length === 1) return;
+    setRecurringSteps(recurringSteps.filter((_, idx) => idx !== index));
+  };
+
+  const handleRecurringStepChange = (index: number, value: string) => {
+    const nextSteps = [...recurringSteps];
+    nextSteps[index] = value;
+    setRecurringSteps(nextSteps);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,8 +71,14 @@ export default function CreateAimView() {
     }
 
     const filteredSteps = steps.filter((step) => step.trim() !== "");
+    const filteredRecurringSteps = recurringSteps.filter((step) => step.trim() !== "");
+
     if (filteredSteps.length === 0) {
-      setError("Please add at least one step to your plan.");
+      setError("Please add at least one Milestone.");
+      return;
+    }
+    if (filteredRecurringSteps.length === 0) {
+      setError("Please add at least one Daily Habit.");
       return;
     }
 
@@ -67,11 +91,18 @@ export default function CreateAimView() {
         completed: false,
       }));
 
+      const formattedRecurringSteps = filteredRecurringSteps.map((step, idx) => ({
+        id: `rec_${idx}_${Date.now()}`,
+        text: step.trim(),
+        completed: false,
+      }));
+
       await createAimAction(
         title.trim(),
         description.trim(),
         deadline,
-        formattedSteps
+        formattedSteps,
+        formattedRecurringSteps
       );
 
       router.push("/");
@@ -130,7 +161,7 @@ export default function CreateAimView() {
         <form onSubmit={handleSubmit} className="flex flex-1 flex-col gap-6">
           <Input
             label="Aim Title"
-            placeholder="e.g. Become a Backend Developer"
+            placeholder="e.g. Master a skill, build a habit, or achieve a target"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
@@ -139,7 +170,7 @@ export default function CreateAimView() {
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-secondary">Description</label>
             <textarea
-              placeholder="e.g. Master Node.js, databases, and build scalable systems..."
+              placeholder="Describe the target milestones and daily routines needed to achieve your aim..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full rounded-md border border-border bg-surface px-3 py-2 text-primary outline-none transition placeholder:text-secondary/60 focus:border-accent min-h-[100px] text-sm"
@@ -154,18 +185,18 @@ export default function CreateAimView() {
             required
           />
 
-          {/* Steps Section */}
+          {/* One-Time Milestones Section */}
           <div className="flex flex-col gap-3">
             <div className="flex justify-between items-center">
               <label className="text-sm font-medium text-secondary">
-                Action Steps / Plan
+                Milestones (One-Time Tasks)
               </label>
               <button
                 type="button"
                 onClick={handleAddStep}
                 className="text-xs font-semibold text-accent hover:underline"
               >
-                + Add Step
+                + Add Milestone
               </button>
             </div>
 
@@ -176,7 +207,7 @@ export default function CreateAimView() {
                     {String(index + 1).padStart(2, "0")}.
                   </span>
                   <input
-                    placeholder={`Step ${index + 1}`}
+                    placeholder={`Milestone ${index + 1} (e.g. Acquire resources)`}
                     value={step}
                     onChange={(e) => handleStepChange(index, e.target.value)}
                     className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-primary outline-none transition placeholder:text-secondary/60 focus:border-accent"
@@ -187,7 +218,63 @@ export default function CreateAimView() {
                       type="button"
                       onClick={() => handleRemoveStep(index)}
                       className="p-2 text-secondary hover:text-accent transition"
-                      aria-label="Remove step"
+                      aria-label="Remove milestone"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                        className="h-4.5 w-4.5"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M6 18 18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Daily Recurring Habits Section */}
+          <div className="flex flex-col gap-3 mt-2">
+            <div className="flex justify-between items-center">
+              <label className="text-sm font-medium text-secondary">
+                Daily Habits (Resets Daily)
+              </label>
+              <button
+                type="button"
+                onClick={handleAddRecurringStep}
+                className="text-xs font-semibold text-accent hover:underline"
+              >
+                + Add Daily Habit
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {recurringSteps.map((step, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <span className="text-xs text-secondary font-mono">
+                    {String(index + 1).padStart(2, "0")}.
+                  </span>
+                  <input
+                    placeholder={`Daily Habit ${index + 1} (e.g. Practice 30 mins)`}
+                    value={step}
+                    onChange={(e) => handleRecurringStepChange(index, e.target.value)}
+                    className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-primary outline-none transition placeholder:text-secondary/60 focus:border-accent"
+                    required
+                  />
+                  {recurringSteps.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveRecurringStep(index)}
+                      className="p-2 text-secondary hover:text-accent transition"
+                      aria-label="Remove daily habit"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"

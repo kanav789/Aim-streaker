@@ -244,8 +244,14 @@ export default function RegisterView() {
             </div>
           </label>
           <span className="text-xs text-zinc-500 leading-normal">
-            I agree to the <span className="text-accent font-semibold hover:underline cursor-pointer">Terms of Service</span> and{" "}
-            <span className="text-accent font-semibold hover:underline cursor-pointer">Privacy Policy</span>
+            I agree to the{" "}
+            <Link href="/terms" className="text-accent font-semibold hover:underline">
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="text-accent font-semibold hover:underline">
+              Privacy Policy
+            </Link>
           </span>
         </div>
         {errors.agree && (
