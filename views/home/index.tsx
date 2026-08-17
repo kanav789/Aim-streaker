@@ -153,8 +153,8 @@ export default function HomeView() {
       <div
         onClick={handleGlobalCheckIn}
         className={`mb-6 rounded-[2rem] bg-surface border p-5 relative overflow-hidden transition-all duration-300 select-none ${hasCheckedInToday
-            ? "border-border"
-            : "border-accent/45 cursor-pointer hover:border-accent active:scale-[0.99] shadow-[0_0_15px_rgba(163,255,18,0.05)]"
+          ? "border-border"
+          : "border-accent/45 cursor-pointer hover:border-accent active:scale-[0.99] shadow-[0_0_15px_rgba(163,255,18,0.05)]"
           }`}
       >
         <div className="flex justify-between items-center mb-4">
@@ -164,11 +164,6 @@ export default function HomeView() {
               {hasCheckedInToday ? `Daily streak: ${globalStreak} days 🔥` : "Tap card to check-in today ⚡"}
             </span>
           </div>
-          <button className="text-zinc-500 hover:text-white transition p-1">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" />
-            </svg>
-          </button>
         </div>
 
         <div className="flex justify-between items-center">
@@ -182,8 +177,8 @@ export default function HomeView() {
                 </span>
                 <div
                   className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${isDateToday
-                      ? "bg-accent/20 text-accent ring-1 ring-accent/50 shadow-[0_0_10px_rgba(163,255,18,0.2)]"
-                      : "bg-zinc-950 text-zinc-400 border border-zinc-900"
+                    ? "bg-accent/20 text-accent ring-1 ring-accent/50 shadow-[0_0_10px_rgba(163,255,18,0.2)]"
+                    : "bg-zinc-950 text-zinc-400 border border-zinc-900"
                     }`}
                 >
                   {dayNum}
@@ -398,10 +393,10 @@ export default function HomeView() {
             </svg>
           </Link>
 
-          {/* Icon 2: Statistics (Graph) */}
+          {/* Icon 2: Rewards (Gift) */}
           <Link href="/profile/rewards" className="flex items-center justify-center w-11 h-11 text-zinc-500 hover:text-white transition duration-200">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1 0 9.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1 1 14.625 7.5H12m0 0V21m-8.625-9.75h17.25c.621 0 1.125-.504 1.125-1.125V9.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
             </svg>
           </Link>
 

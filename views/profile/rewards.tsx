@@ -17,8 +17,8 @@ export default function RewardsView() {
     <div className="flex min-h-full flex-1 flex-col pb-8">
       {/* Header */}
       <header className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border">
-        <Link href="/profile" className="text-sm text-secondary hover:text-primary">
-          Profile
+        <Link href="/" className="text-sm text-secondary hover:text-primary">
+          Back
         </Link>
         <h1 className="text-lg font-semibold text-primary">Rewards</h1>
         <span className="w-10" aria-hidden />

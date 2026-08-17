@@ -206,32 +206,6 @@ export default function ProfileView() {
 
             {/* Navigation Links */}
             <div className="mt-6 w-full flex flex-col gap-3">
-              <Link
-                href="/profile/rewards"
-                className="w-full flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3.5 text-sm font-medium text-primary transition hover:border-secondary/30 active:scale-[0.99]"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-lg">🎁</span>
-                  <span>Rewards Center</span>
-                </div>
-                <div className="flex items-center gap-1 text-xs text-secondary">
-                  <span>View rewards</span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
-                    className="h-4 w-4"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="m8.25 4.5 7.5 7.5-7.5 7.5"
-                    />
-                  </svg>
-                </div>
-              </Link>
 
               {/* Terms of Service */}
               <Link
