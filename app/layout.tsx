@@ -1,7 +1,7 @@
-import { AuthProvider } from "@/context/auth-context";
 import { AimsProvider } from "@/context/aims-context";
+import { AuthProvider } from "@/context/auth-context";
 import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
@@ -30,7 +30,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <div className="hidden sm:flex fixed inset-0 z-50 flex-col items-center justify-center bg-black p-6 select-none overflow-hidden">
           {/* Subtle background glow */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-accent/10 rounded-full blur-[120px] pointer-events-none" />
-          
+
           <div className="relative z-10 flex flex-col items-center max-w-sm text-center">
             {/* Phone Silhouette Animation */}
             <div className="relative w-20 h-36 border-4 border-zinc-700 rounded-[2.5rem] p-1.5 mb-8 animate-pulse shadow-[0_0_20px_rgba(163,255,18,0.15)] flex items-center justify-center">
@@ -51,60 +51,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               Aim <span className="text-accent">Streaker</span>
             </h1>
             <p className="text-sm font-medium text-zinc-400 mb-8 leading-relaxed">
-              This application is designed specifically for mobile devices. To continue, please open this URL on your phone or scan the QR code below.
+              This application is optimized for mobile devices to provide the best view and experience. Please open this URL on your phone to continue.
             </p>
 
-            {/* QR Code Placeholder with Premium Border */}
-            <div className="relative p-4 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl flex flex-col items-center justify-center w-40 h-40">
-              {/* Decorative corners */}
-              <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-accent rounded-tl-md" />
-              <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-accent rounded-tr-md" />
-              <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-accent rounded-bl-md" />
-              <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-accent rounded-br-md" />
-              
-              {/* Mock QR Code Pattern using SVG */}
-              <svg className="w-28 h-28 text-white fill-current opacity-80" viewBox="0 0 100 100">
-                {/* QR Finder patterns */}
-                <rect x="0" y="0" width="30" height="30" rx="3" className="text-accent fill-current" />
-                <rect x="5" y="5" width="20" height="20" rx="1" className="text-black fill-current" />
-                <rect x="10" y="10" width="10" height="10" rx="0.5" className="text-accent fill-current" />
-
-                <rect x="70" y="0" width="30" height="30" rx="3" className="text-accent fill-current" />
-                <rect x="75" y="5" width="20" height="20" rx="1" className="text-black fill-current" />
-                <rect x="80" y="10" width="10" height="10" rx="0.5" className="text-accent fill-current" />
-
-                <rect x="0" y="70" width="30" height="30" rx="3" className="text-accent fill-current" />
-                <rect x="5" y="75" width="20" height="20" rx="1" className="text-black fill-current" />
-                <rect x="10" y="80" width="10" height="10" rx="0.5" className="text-accent fill-current" />
-                
-                {/* Random QR code pixels/patterns for authentic look */}
-                <rect x="40" y="0" width="10" height="10" />
-                <rect x="40" y="20" width="10" height="10" />
-                <rect x="50" y="10" width="10" height="10" />
-                <rect x="50" y="30" width="10" height="10" />
-                
-                <rect x="0" y="40" width="10" height="10" />
-                <rect x="20" y="40" width="10" height="10" />
-                <rect x="10" y="50" width="10" height="10" />
-                <rect x="30" y="50" width="10" height="10" />
-                
-                <rect x="70" y="40" width="10" height="10" />
-                <rect x="90" y="40" width="10" height="10" />
-                <rect x="80" y="50" width="10" height="10" />
-                
-                <rect x="40" y="70" width="10" height="10" />
-                <rect x="50" y="80" width="10" height="10" />
-                <rect x="40" y="90" width="10" height="10" />
-                
-                <rect x="70" y="70" width="10" height="10" />
-                <rect x="90" y="80" width="10" height="10" />
-                <rect x="80" y="90" width="10" height="10" />
-              </svg>
-            </div>
-            
-            <span className="mt-4 text-[10px] uppercase tracking-wider font-semibold text-accent/80">
-              Scan to Play
-            </span>
           </div>
         </div>
 
@@ -115,6 +64,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           </AuthProvider>
         </div>
       </body>
-    </html>
+    </html >
   );
 }
