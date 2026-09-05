@@ -273,6 +273,46 @@ export default function HomeView() {
         </div>
       </div>
 
+      {/* 🏃 Running / God Mode CTA Entry Card */}
+      <Link
+        href="/god-mode"
+        className="mb-6 group block rounded-[2rem] bg-surface border border-border hover:border-accent/60 p-5 transition-all duration-300 active:scale-[0.99] shadow-lg hover:shadow-[0_0_25px_rgba(163,255,18,0.12)] relative overflow-hidden select-none"
+      >
+        <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full blur-2xl pointer-events-none group-hover:bg-accent/10 transition" />
+        <div className="flex items-center justify-between relative z-10">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-accent/15 border border-accent/30 text-accent flex items-center justify-center text-2xl shadow-[0_0_15px_rgba(163,255,18,0.2)] group-hover:scale-105 transition duration-300">
+              🏃
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-base font-extrabold text-white tracking-tight group-hover:text-accent transition">
+                  Running / God Mode
+                </span>
+                <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent/20 text-accent border border-accent/30 animate-pulse">
+                  GPS
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 font-medium mt-0.5">
+                Capture real-world territory on the shared map
+              </p>
+            </div>
+          </div>
+          <div className="w-8 h-8 rounded-full border border-zinc-800 bg-zinc-950 flex items-center justify-center text-zinc-400 group-hover:text-accent group-hover:border-accent/40 group-hover:translate-x-0.5 transition">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2.5}
+              stroke="currentColor"
+              className="w-4 h-4"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+            </svg>
+          </div>
+        </div>
+      </Link>
+
       {/* Aims streak list */}
       <div className="flex flex-col gap-5">
         {activeAims.length === 0 ? (

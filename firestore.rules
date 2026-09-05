@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Users collection
+    match /users/{userId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Aims collection
+    match /aims/{aimId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Phase 2: Shared World Territories (All logged-in users can read, creators can write)
+    match /territories/{territoryId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+    
+    // Phase 2: Running Sessions
+    match /running_sessions/{sessionId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
