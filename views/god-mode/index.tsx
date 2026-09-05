@@ -96,6 +96,21 @@ export default function GodModeView() {
     loadTerritoryData();
   }, [loadTerritoryData]);
 
+  // Synchronize route points, distance calculation, and live coordinates
+  useEffect(() => {
+    if (rawGPSPoints.length === 0) {
+      setDistanceMeters(0);
+      setLiveRouteCoordinates([]);
+      return;
+    }
+    const filtered = filterGPSPoints(rawGPSPoints);
+    const totalDist = calculateRouteDistance(filtered);
+    setDistanceMeters(totalDist);
+
+    const pointsToDraw = filtered.length >= 2 ? filtered : rawGPSPoints;
+    setLiveRouteCoordinates(pointsToDraw.map((p) => [p.longitude, p.latitude]));
+  }, [rawGPSPoints]);
+
   // Request initial GPS position
   const requestLocation = useCallback(() => {
     setLocationError(null);
@@ -168,14 +183,7 @@ export default function GodModeView() {
           speed: speed || null,
         };
 
-        setRawGPSPoints((prev) => {
-          const updated = [...prev, newPoint];
-          const filtered = filterGPSPoints(updated);
-          const totalDist = calculateRouteDistance(filtered);
-          setDistanceMeters(totalDist);
-          setLiveRouteCoordinates(filtered.map((p) => [p.longitude, p.latitude]));
-          return updated;
-        });
+        setRawGPSPoints((prev) => [...prev, newPoint]);
       },
       (err) => {
         console.warn("GPS tracking warning:", err.message);
