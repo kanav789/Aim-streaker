@@ -50,6 +50,9 @@ export function MapView({
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
   const [isMapReady, setIsMapReady] = useState(false);
 
+  // Projected screen coordinates for the live route and covered area
+  const [projectedRoutePoints, setProjectedRoutePoints] = useState<{ x: number; y: number }[]>([]);
+
   // Initialize MapLibre GL
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -73,22 +76,14 @@ export function MapView({
     );
 
     map.on("load", () => {
-      // Force map to fill parent viewport correctly
       map.resize();
       setIsMapReady(true);
       if (onMapLoaded) onMapLoaded();
 
-      // 1. Live Route Source & Layer
+      // 1. Live Route WebGL Layer (backup layer)
       map.addSource("live-route-source", {
         type: "geojson",
-        data: {
-          type: "Feature",
-          properties: {},
-          geometry: {
-            type: "LineString",
-            coordinates: [],
-          },
-        },
+        data: { type: "FeatureCollection", features: [] },
       });
 
       map.addLayer({
@@ -97,9 +92,9 @@ export function MapView({
         source: "live-route-source",
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": "#ffffff",
-          "line-width": 6,
-          "line-opacity": 0.25,
+          "line-color": "#000000",
+          "line-width": 8,
+          "line-opacity": 0.5,
         },
       });
 
@@ -110,7 +105,7 @@ export function MapView({
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
           "line-color": "#a3ff12",
-          "line-width": 4,
+          "line-width": 5,
           "line-opacity": 0.95,
         },
       });
@@ -127,7 +122,7 @@ export function MapView({
         source: "other-territories-source",
         paint: {
           "fill-color": "#00e5ff",
-          "fill-opacity": 0.25,
+          "fill-opacity": 0.35,
         },
       });
 
@@ -137,8 +132,8 @@ export function MapView({
         source: "other-territories-source",
         paint: {
           "line-color": "#00e5ff",
-          "line-width": 2,
-          "line-opacity": 0.8,
+          "line-width": 2.5,
+          "line-opacity": 0.9,
         },
       });
 
@@ -164,8 +159,8 @@ export function MapView({
         source: "my-territories-source",
         paint: {
           "line-color": "#a3ff12",
-          "line-width": 2.5,
-          "line-opacity": 0.9,
+          "line-width": 3,
+          "line-opacity": 0.95,
         },
       });
 
@@ -226,6 +221,34 @@ export function MapView({
     };
   }, []);
 
+  // Synchronize SVG projected points on route change and map movement
+  useEffect(() => {
+    if (!mapRef.current || !isMapReady) return;
+
+    const map = mapRef.current;
+
+    const updateProjectedPoints = () => {
+      if (liveRouteCoordinates.length === 0) {
+        setProjectedRoutePoints([]);
+        return;
+      }
+      const points = liveRouteCoordinates.map((coord) => map.project(coord));
+      setProjectedRoutePoints(points);
+    };
+
+    updateProjectedPoints();
+
+    map.on("move", updateProjectedPoints);
+    map.on("zoom", updateProjectedPoints);
+    map.on("rotate", updateProjectedPoints);
+
+    return () => {
+      map.off("move", updateProjectedPoints);
+      map.off("zoom", updateProjectedPoints);
+      map.off("rotate", updateProjectedPoints);
+    };
+  }, [liveRouteCoordinates, isMapReady]);
+
   // Update User Marker & Center
   useEffect(() => {
     if (!mapRef.current || !isMapReady || !userLocation) return;
@@ -236,9 +259,9 @@ export function MapView({
       const el = document.createElement("div");
       el.className = "user-gps-marker";
       el.innerHTML = `
-        <div style="position: relative; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;">
+        <div style="position: relative; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">
           <div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; background-color: #a3ff12; opacity: 0.35; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-          <div style="width: 14px; height: 14px; border-radius: 50%; background-color: #a3ff12; border: 2.5px solid #ffffff; box-shadow: 0 0 12px rgba(163,255,18,0.9);"></div>
+          <div style="width: 14px; height: 14px; border-radius: 50%; background-color: #a3ff12; border: 2.5px solid #ffffff; box-shadow: 0 0 14px rgba(163,255,18,0.95);"></div>
         </div>
       `;
 
@@ -248,7 +271,7 @@ export function MapView({
 
       mapRef.current.flyTo({
         center: [userLocation.longitude, userLocation.latitude],
-        zoom: 16,
+        zoom: 16.5,
         essential: true,
       });
     } else {
@@ -259,25 +282,36 @@ export function MapView({
     }
   }, [userLocation, isMapReady]);
 
-  // Update Live Route Layer
+  // Update Live Route WebGL Layer
   useEffect(() => {
     if (!mapRef.current || !isMapReady) return;
 
     const source = mapRef.current.getSource("live-route-source") as maplibregl.GeoJSONSource;
     if (source) {
-      const lineGeoJSON: Feature<LineString> = {
-        type: "Feature",
-        properties: {},
-        geometry: {
-          type: "LineString",
-          coordinates: liveRouteCoordinates,
-        },
-      };
-      source.setData(lineGeoJSON);
+      if (liveRouteCoordinates.length >= 2) {
+        source.setData({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              properties: {},
+              geometry: {
+                type: "LineString",
+                coordinates: liveRouteCoordinates,
+              },
+            },
+          ],
+        });
+      } else {
+        source.setData({
+          type: "FeatureCollection",
+          features: [],
+        });
+      }
     }
   }, [liveRouteCoordinates, isMapReady]);
 
-  // Update World Territories on Map (Split into My vs Other)
+  // Update World Territories on Map
   useEffect(() => {
     if (!mapRef.current || !isMapReady) return;
 
@@ -339,12 +373,74 @@ export function MapView({
 
   return (
     <div className="absolute inset-0 w-full h-full bg-black overflow-hidden tactical-map">
-      {/* Map Container */}
+      {/* Base Map Container */}
       <div
         ref={mapContainerRef}
         className="w-full h-full"
         style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
       />
+
+      {/* High-Visibility Projected SVG Live Route & Covered Area Overlay */}
+      {projectedRoutePoints.length >= 1 && (
+        <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-visible">
+          {/* Covered Area Polygon (Shaded Area being captured) */}
+          {projectedRoutePoints.length >= 3 && (
+            <polygon
+              points={projectedRoutePoints.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).join(" ")}
+              fill="rgba(163, 255, 18, 0.25)"
+              stroke="#a3ff12"
+              strokeWidth="2.5"
+              strokeDasharray="6 4"
+            />
+          )}
+
+          {/* Active Running Line */}
+          {projectedRoutePoints.length >= 2 && (
+            <>
+              {/* Outer Casing for contrast */}
+              <path
+                d={`M ${projectedRoutePoints.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).join(" L ")}`}
+                fill="none"
+                stroke="#000000"
+                strokeWidth="8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeOpacity="0.6"
+              />
+              {/* Vibrant Neon Green Route */}
+              <path
+                d={`M ${projectedRoutePoints.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).join(" L ")}`}
+                fill="none"
+                stroke="#a3ff12"
+                strokeWidth="5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ filter: "drop-shadow(0 0 8px #a3ff12)" }}
+              />
+            </>
+          )}
+
+          {/* Start Point Beacon Pin */}
+          {projectedRoutePoints.length >= 1 && (
+            <g transform={`translate(${Math.round(projectedRoutePoints[0].x)}, ${Math.round(projectedRoutePoints[0].y)})`}>
+              <circle r="14" fill="#a3ff12" fillOpacity="0.3" className="animate-ping" />
+              <circle r="6" fill="#a3ff12" stroke="#ffffff" strokeWidth="2.5" />
+              <text
+                y="-12"
+                textAnchor="middle"
+                fill="#a3ff12"
+                fontSize="11"
+                fontWeight="900"
+                stroke="#000000"
+                strokeWidth="3"
+                paintOrder="stroke"
+              >
+                🏁 START
+              </text>
+            </g>
+          )}
+        </svg>
+      )}
 
       {/* Recenter Button */}
       {userLocation && isMapReady && (

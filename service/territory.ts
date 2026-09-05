@@ -30,7 +30,7 @@ export interface TerritoryCalculationResult {
 }
 
 /**
- * Filter raw GPS points to reduce jitter and discard low accuracy points.
+ * Filter raw GPS points to reduce jitter while preserving real-world mobile movements.
  */
 export function filterGPSPoints(rawPoints: GPSPoint[]): GPSPoint[] {
   if (rawPoints.length === 0) return [];
@@ -38,8 +38,8 @@ export function filterGPSPoints(rawPoints: GPSPoint[]): GPSPoint[] {
   const filtered: GPSPoint[] = [];
 
   for (const pt of rawPoints) {
-    // Discard points with accuracy worse than 40m
-    if (pt.accuracy > 40) continue;
+    // Discard points only if accuracy is extremely poor (> 80m)
+    if (pt.accuracy > 80 && rawPoints.length > 2) continue;
 
     if (filtered.length === 0) {
       filtered.push(pt);
@@ -54,13 +54,14 @@ export function filterGPSPoints(rawPoints: GPSPoint[]): GPSPoint[] {
       { units: "meters" }
     );
 
-    // Filter out points with micro-jitter (< 2.5m) unless there's a significant time gap
-    if (dist >= 2.5 || pt.timestamp - last.timestamp > 10000) {
+    // Keep points if moved at least 1.5m or after 3 seconds
+    if (dist >= 1.5 || pt.timestamp - last.timestamp > 3000) {
       filtered.push(pt);
     }
   }
 
-  return filtered;
+  // Fallback: if over-filtered, keep all raw points so route is never lost
+  return filtered.length >= 1 ? filtered : rawPoints;
 }
 
 /**
