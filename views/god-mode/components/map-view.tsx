@@ -19,8 +19,45 @@ interface MapViewProps {
   onMapLoaded?: () => void;
 }
 
-// Official CARTO Dark Matter Vector Style (high performance, crisp vector streets, zero watermarks)
-const CARTO_DARK_MATTER_VECTOR_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+// Robust, high-performance dark tactical style with full street details and ZERO watermarks/API keys
+const TACTICAL_DARK_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {
+    "esri-dark-base": {
+      type: "raster",
+      tiles: [
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+      ],
+      tileSize: 256,
+      maxzoom: 16,
+      attribution: "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ",
+    },
+    "esri-dark-ref": {
+      type: "raster",
+      tiles: [
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+      ],
+      tileSize: 256,
+      maxzoom: 16,
+    },
+  },
+  layers: [
+    {
+      id: "esri-dark-base-layer",
+      type: "raster",
+      source: "esri-dark-base",
+      minzoom: 0,
+      maxzoom: 22,
+    },
+    {
+      id: "esri-dark-ref-layer",
+      type: "raster",
+      source: "esri-dark-ref",
+      minzoom: 0,
+      maxzoom: 22,
+    },
+  ],
+};
 
 export function MapView({
   userLocation,
@@ -70,7 +107,7 @@ export function MapView({
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: CARTO_DARK_MATTER_VECTOR_STYLE,
+      style: TACTICAL_DARK_STYLE,
       center: [initialLng, initialLat],
       zoom: initialZoom,
       pitch: 0,
@@ -81,6 +118,14 @@ export function MapView({
       new maplibregl.AttributionControl({ compact: true }),
       "bottom-left"
     );
+
+    map.on("error", (e) => {
+      console.warn("[TacticalMap Warning]", e);
+    });
+
+    setTimeout(() => {
+      map.resize();
+    }, 100);
 
     map.on("load", () => {
       map.resize();
