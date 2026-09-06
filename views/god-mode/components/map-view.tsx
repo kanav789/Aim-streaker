@@ -19,33 +19,8 @@ interface MapViewProps {
   onMapLoaded?: () => void;
 }
 
-// Ultra-clean native Dark Matter tile style for vibrant tactical WebGL rendering
-const CARTO_DARK_STYLE: maplibregl.StyleSpecification = {
-  version: 8,
-  sources: {
-    "carto-dark": {
-      type: "raster",
-      tiles: [
-        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-      ],
-      tileSize: 256,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    },
-  },
-  layers: [
-    {
-      id: "carto-dark-layer",
-      type: "raster",
-      source: "carto-dark",
-      minzoom: 0,
-      maxzoom: 20,
-    },
-  ],
-};
+// Official CARTO Dark Matter Vector Style (high performance, crisp vector streets, zero watermarks)
+const CARTO_DARK_MATTER_VECTOR_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
 export function MapView({
   userLocation,
@@ -62,6 +37,7 @@ export function MapView({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
   const territoryMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const hasAutoCenteredRef = useRef(false);
   const [isMapReady, setIsMapReady] = useState(false);
 
   // Projected screen coordinates for the live route and covered area
@@ -71,13 +47,30 @@ export function MapView({
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    const initialLng = userLocation ? userLocation.longitude : 0;
-    const initialLat = userLocation ? userLocation.latitude : 20;
-    const initialZoom = userLocation ? 16.5 : 2;
+    // Prioritize captured territory, then user location, then Thaltej (Aster Hospital)
+    let initialLng = 72.5123;
+    let initialLat = 23.0495;
+    let initialZoom = 16.5;
+
+    if (worldTerritories && worldTerritories.length > 0) {
+      try {
+        const latest = worldTerritories[0];
+        const parsed = JSON.parse(latest.polygonGeoJSON);
+        const geom = parsed.geometry ? parsed.geometry : parsed;
+        const c = turf.centroid(geom);
+        initialLng = c.geometry.coordinates[0];
+        initialLat = c.geometry.coordinates[1];
+      } catch (e) {
+        // fallback
+      }
+    } else if (userLocation) {
+      initialLng = userLocation.longitude;
+      initialLat = userLocation.latitude;
+    }
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: CARTO_DARK_STYLE,
+      style: CARTO_DARK_MATTER_VECTOR_STYLE,
       center: [initialLng, initialLat],
       zoom: initialZoom,
       pitch: 0,
@@ -94,7 +87,7 @@ export function MapView({
       setIsMapReady(true);
       if (onMapLoaded) onMapLoaded();
 
-      // 1. Other Users' Territories Source & Layers (Cyan / Electric Blue)
+      // 1. Other Users' Territories Source & Layers (Unified Glowing Neon Green Aesthetic)
       map.addSource("other-territories-source", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -105,8 +98,33 @@ export function MapView({
         type: "fill",
         source: "other-territories-source",
         paint: {
-          "fill-color": "#00e5ff",
-          "fill-opacity": 0.35,
+          "fill-color": "#a3ff12",
+          "fill-opacity": 0.25,
+        },
+      });
+
+      map.addLayer({
+        id: "other-territories-glow",
+        type: "line",
+        source: "other-territories-source",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#a3ff12",
+          "line-width": 10,
+          "line-opacity": 0.35,
+          "line-blur": 3,
+        },
+      });
+
+      map.addLayer({
+        id: "other-territories-casing",
+        type: "line",
+        source: "other-territories-source",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#000000",
+          "line-width": 8,
+          "line-opacity": 0.7,
         },
       });
 
@@ -114,14 +132,15 @@ export function MapView({
         id: "other-territories-line",
         type: "line",
         source: "other-territories-source",
+        layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": "#00e5ff",
-          "line-width": 3,
-          "line-opacity": 0.95,
+          "line-color": "#a3ff12",
+          "line-width": 5,
+          "line-opacity": 1.0,
         },
       });
 
-      // 2. My Territories Source & Layers (Neon Green)
+      // 2. My Territories Source & Layers (Neon Green with High-Contrast Casing and Glow)
       map.addSource("my-territories-source", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -133,7 +152,32 @@ export function MapView({
         source: "my-territories-source",
         paint: {
           "fill-color": "#a3ff12",
-          "fill-opacity": 0.35,
+          "fill-opacity": 0.25,
+        },
+      });
+
+      map.addLayer({
+        id: "my-territories-glow",
+        type: "line",
+        source: "my-territories-source",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#a3ff12",
+          "line-width": 10,
+          "line-opacity": 0.35,
+          "line-blur": 3,
+        },
+      });
+
+      map.addLayer({
+        id: "my-territories-casing",
+        type: "line",
+        source: "my-territories-source",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#000000",
+          "line-width": 8,
+          "line-opacity": 0.7,
         },
       });
 
@@ -141,14 +185,15 @@ export function MapView({
         id: "my-territories-line",
         type: "line",
         source: "my-territories-source",
+        layout: { "line-join": "round", "line-cap": "round" },
         paint: {
           "line-color": "#a3ff12",
-          "line-width": 3,
-          "line-opacity": 0.95,
+          "line-width": 5,
+          "line-opacity": 1.0,
         },
       });
 
-      // 3. Other Users' Running Route Tracks (Electric Cyan with Dark Casing)
+      // 3. Other Users' Running Route Tracks (Neon Lime with Dark Casing)
       map.addSource("other-routes-source", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -161,8 +206,8 @@ export function MapView({
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
           "line-color": "#000000",
-          "line-width": 9,
-          "line-opacity": 0.85,
+          "line-width": 8,
+          "line-opacity": 0.7,
         },
       });
 
@@ -172,8 +217,8 @@ export function MapView({
         source: "other-routes-source",
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": "#00e5ff",
-          "line-width": 5.5,
+          "line-color": "#a3ff12",
+          "line-width": 5,
           "line-opacity": 1.0,
         },
       });
@@ -191,8 +236,8 @@ export function MapView({
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
           "line-color": "#000000",
-          "line-width": 9.5,
-          "line-opacity": 0.85,
+          "line-width": 8,
+          "line-opacity": 0.7,
         },
       });
 
@@ -203,7 +248,7 @@ export function MapView({
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
           "line-color": "#a3ff12",
-          "line-width": 6,
+          "line-width": 5,
           "line-opacity": 1.0,
         },
       });
@@ -257,9 +302,9 @@ export function MapView({
             .setLngLat(coordinates)
             .setHTML(
               `<div style="font-family: inherit; padding: 2px 0;">
-                <div style="font-weight: 900; font-size: 13px; color: ${isSelf ? "#a3ff12" : "#00e5ff"}; display: flex; align-items: center; gap: 6px; letter-spacing: -0.01em;">
+                <div style="font-weight: 900; font-size: 13px; color: #a3ff12; display: flex; align-items: center; gap: 6px; letter-spacing: -0.01em;">
                   <span>${isSelf ? "👑" : "👤"}</span>
-                  <span>${isSelf ? "Your Territory (" + ownerName + ")" : ownerName}</span>
+                  <span>${isSelf ? "Your Territory (" + ownerName + ")" : ownerName + "'s Territory"}</span>
                 </div>
                 ${distance > 0 ? `<div style="font-size: 11px; margin-top: 6px; color: #e4e4e7; font-weight: 700; display: flex; align-items: center; gap: 4px;"><span>🏃</span><span>Run Route:</span><span style="color: #ffffff; font-weight: 800;">${formatDistance(distance)}</span></div>` : ""}
                 <div style="font-size: 11px; margin-top: 3px; color: #a1a1aa; font-weight: 600; display: flex; align-items: center; gap: 4px;">
@@ -280,7 +325,9 @@ export function MapView({
       };
 
       setupPopupHandler("my-territories-fill", true);
+      setupPopupHandler("my-territories-line", true);
       setupPopupHandler("other-territories-fill", false);
+      setupPopupHandler("other-territories-line", false);
       setupPopupHandler("my-routes-line", true);
       setupPopupHandler("other-routes-line", false);
     });
@@ -350,18 +397,21 @@ export function MapView({
         .setLngLat([userLocation.longitude, userLocation.latitude])
         .addTo(mapRef.current);
 
-      mapRef.current.flyTo({
-        center: [userLocation.longitude, userLocation.latitude],
-        zoom: 16.5,
-        essential: true,
-      });
+      // Only fly to user location if actively tracking or if no territories exist yet
+      if (liveRouteCoordinates.length > 0 || !worldTerritories || worldTerritories.length === 0) {
+        mapRef.current.flyTo({
+          center: [userLocation.longitude, userLocation.latitude],
+          zoom: 16.5,
+          essential: true,
+        });
+      }
     } else {
       userMarkerRef.current.setLngLat([
         userLocation.longitude,
         userLocation.latitude,
       ]);
     }
-  }, [userLocation, isMapReady]);
+  }, [userLocation, isMapReady, liveRouteCoordinates.length, worldTerritories]);
 
   // Update Live Route WebGL Layer
   useEffect(() => {
@@ -518,61 +568,69 @@ export function MapView({
           }
         }
 
-        // Calculate centroid for visible name & distance & area badge on tactical map
+        // Calculate centroid and identify start point for START beacon & runner name badge
         const centroid = turf.centroid(geom);
         const [cLng, cLat] = centroid.geometry.coordinates;
+        const hasStartPoint = routeCoords.length >= 1;
+        const pinLng = hasStartPoint ? routeCoords[0][0] : cLng;
+        const pinLat = hasStartPoint ? routeCoords[0][1] : cLat;
 
         const isSelf = territory.userId === currentUserId;
         const ownerName = territory.userName || (isSelf ? "You" : "Runner");
         const areaText = formatArea(territory.areaSquareMeters || 0);
         const distText = territory.distanceMeters ? formatDistance(territory.distanceMeters) : null;
 
-        const badge = document.createElement("div");
-        badge.className = "aim-territory-badge";
-        badge.style.cursor = "pointer";
-        badge.style.display = "inline-flex";
-        badge.style.alignItems = "center";
-        badge.style.gap = "4px";
-        badge.style.padding = "3px 8px";
-        badge.style.borderRadius = "9999px";
-        badge.style.fontSize = "10px";
-        badge.style.fontWeight = "800";
-        badge.style.whiteSpace = "nowrap";
-        badge.style.userSelect = "none";
-        badge.style.transition = "transform 0.15s ease, box-shadow 0.15s ease";
+        // Container element for START pin & Owner Name (exact visual style as running view)
+        const markerEl = document.createElement("div");
+        markerEl.className = "aim-territory-marker-container";
+        markerEl.style.position = "relative";
+        markerEl.style.display = "flex";
+        markerEl.style.flexDirection = "column";
+        markerEl.style.alignItems = "center";
+        markerEl.style.cursor = "pointer";
+        markerEl.style.userSelect = "none";
+        markerEl.style.transition = "transform 0.15s ease";
 
-        const badgeDetail = distText
-          ? `• 🏃 ${distText} • 🏴 ${areaText}`
-          : `• 🏴 ${areaText}`;
+        const displayName = isSelf ? (ownerName && ownerName !== "Streaker" ? ownerName : "YOU") : ownerName;
 
-        if (isSelf) {
-          badge.style.background = "rgba(0, 0, 0, 0.88)";
-          badge.style.border = "1.5px solid #a3ff12";
-          badge.style.color = "#a3ff12";
-          badge.style.boxShadow = "0 0 12px rgba(163, 255, 18, 0.4)";
-          badge.innerHTML = `<span>👑</span><span>You (${ownerName})</span><span style="opacity:0.75;font-weight:600;font-size:9px;">${badgeDetail}</span>`;
-        } else {
-          badge.style.background = "rgba(0, 0, 0, 0.88)";
-          badge.style.border = "1.5px solid #00e5ff";
-          badge.style.color = "#00e5ff";
-          badge.style.boxShadow = "0 0 12px rgba(0, 229, 255, 0.4)";
-          badge.innerHTML = `<span>👤</span><span>${ownerName}</span><span style="opacity:0.75;font-weight:600;font-size:9px;">${badgeDetail}</span>`;
-        }
+        markerEl.innerHTML = `
+          <!-- START text with runner name exactly matching screenshot -->
+          <div style="
+            font-size: 11px;
+            font-weight: 900;
+            color: #a3ff12;
+            text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0 2px 4px rgba(0,0,0,0.95);
+            letter-spacing: -0.01em;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+          ">
+            <span>🏁 START</span>
+            ${displayName ? `<span style="color: #ffffff; font-weight: 800; font-size: 10px; opacity: 0.95;">• ${displayName}</span>` : ""}
+          </div>
 
-        badge.onmouseenter = () => {
-          badge.style.transform = "scale(1.08)";
+          <!-- Pulsing Beacon Pin Dot matching screenshot -->
+          <div style="position: relative; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;">
+            <div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; background-color: #a3ff12; opacity: 0.35; animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+            <div style="width: 14px; height: 14px; border-radius: 50%; background-color: #a3ff12; border: 2.5px solid #ffffff; box-shadow: 0 0 12px rgba(163,255,18,0.95);"></div>
+          </div>
+        `;
+
+        markerEl.onmouseenter = () => {
+          markerEl.style.transform = "scale(1.15)";
         };
-        badge.onmouseleave = () => {
-          badge.style.transform = "scale(1)";
+        markerEl.onmouseleave = () => {
+          markerEl.style.transform = "scale(1)";
         };
 
-        badge.onclick = (e) => {
+        markerEl.onclick = (e) => {
           e.stopPropagation();
           if (!mapRef.current) return;
 
-          // Smoothly zoom into street-level (zoom 17) to reveal the route track and area shape
           mapRef.current.flyTo({
-            center: [cLng, cLat],
+            center: [pinLng, pinLat],
             zoom: 17,
             pitch: 20,
             essential: true,
@@ -580,12 +638,12 @@ export function MapView({
           });
 
           new maplibregl.Popup({ offset: 15, className: isSelf ? "aim-map-popup self-popup" : "aim-map-popup" })
-            .setLngLat([cLng, cLat])
+            .setLngLat([pinLng, pinLat])
             .setHTML(`
               <div style="font-family: inherit; padding: 2px 0;">
-                <div style="font-weight: 900; font-size: 13px; color: ${isSelf ? "#a3ff12" : "#00e5ff"}; display: flex; align-items: center; gap: 6px; letter-spacing: -0.01em;">
+                <div style="font-weight: 900; font-size: 13px; color: #a3ff12; display: flex; align-items: center; gap: 6px; letter-spacing: -0.01em;">
                   <span>${isSelf ? "👑" : "👤"}</span>
-                  <span>${isSelf ? "Your Territory (" + ownerName + ")" : ownerName}</span>
+                  <span>${isSelf ? "Your Territory (" + ownerName + ")" : ownerName + "'s Territory"}</span>
                 </div>
                 ${distText ? `<div style="font-size: 11px; margin-top: 6px; color: #e4e4e7; font-weight: 700; display: flex; align-items: center; gap: 4px;"><span>🏃</span><span>Run Route:</span><span style="color: #ffffff; font-weight: 800;">${distText}</span></div>` : ""}
                 <div style="font-size: 11px; margin-top: 3px; color: #a1a1aa; font-weight: 600; display: flex; align-items: center; gap: 4px;">
@@ -597,8 +655,8 @@ export function MapView({
             .addTo(mapRef.current);
         };
 
-        const marker = new maplibregl.Marker({ element: badge, anchor: "center" })
-          .setLngLat([cLng, cLat])
+        const marker = new maplibregl.Marker({ element: markerEl, anchor: "bottom" })
+          .setLngLat([pinLng, pinLat])
           .addTo(mapRef.current);
 
         territoryMarkersRef.current.push(marker);
@@ -666,6 +724,34 @@ export function MapView({
       );
     }
   }, [focusCoordinates, focusBounds, isMapReady]);
+
+  // Auto-center map on latest territory when territories load, if not actively tracking a run
+  useEffect(() => {
+    if (!mapRef.current || !isMapReady || hasAutoCenteredRef.current) return;
+    if (focusCoordinates || focusBounds) return;
+
+    if (worldTerritories && worldTerritories.length > 0) {
+      try {
+        const latest = worldTerritories[0];
+        const parsed = JSON.parse(latest.polygonGeoJSON);
+        const geom = parsed.geometry ? parsed.geometry : parsed;
+        const c = turf.centroid(geom);
+        const [cLng, cLat] = c.geometry.coordinates;
+
+        // If user is not currently in a live run, center on the territory
+        if (liveRouteCoordinates.length === 0) {
+          mapRef.current.easeTo({
+            center: [cLng, cLat],
+            zoom: 16.5,
+            duration: 900,
+          });
+          hasAutoCenteredRef.current = true;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [worldTerritories, isMapReady, focusCoordinates, focusBounds, liveRouteCoordinates.length]);
 
   // Recenter helper
   const handleRecenter = () => {
@@ -790,12 +876,7 @@ export function MapView({
         <div className="flex items-center gap-2">
           <span className="w-3.5 h-1 rounded bg-[#a3ff12] shadow-[0_0_6px_#a3ff12]"></span>
           <span className="w-2.5 h-2.5 rounded-sm bg-[#a3ff12]/30 border border-[#a3ff12]"></span>
-          <span className="text-zinc-200 font-medium">Your Route &amp; Territory</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-3.5 h-1 rounded bg-[#00e5ff] shadow-[0_0_6px_#00e5ff]"></span>
-          <span className="w-2.5 h-2.5 rounded-sm bg-[#00e5ff]/30 border border-[#00e5ff]"></span>
-          <span className="text-zinc-200 font-medium">Other Runners' Route &amp; Territory</span>
+          <span className="text-zinc-200 font-medium">Captured World Territories</span>
         </div>
       </div>
 

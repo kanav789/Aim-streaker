@@ -5,6 +5,7 @@ import {
   addDoc,
   getDocs,
   getDoc,
+  setDoc,
   doc,
   query,
   where,
@@ -477,6 +478,22 @@ export async function saveRunningSessionAndTerritory(params: {
 
   // 2. Save territory into shared world territories collection forever!
   if (polygonToSave) {
+    let finalRouteCoords: [number, number][] = routeCoordinates;
+    if ((!finalRouteCoords || finalRouteCoords.length < 2) && polygonToSave) {
+      try {
+        const parsed = JSON.parse(polygonToSave);
+        if (parsed.type === "Polygon" && parsed.coordinates?.[0]) {
+          finalRouteCoords = parsed.coordinates[0];
+        } else if (parsed.geometry?.type === "Polygon" && parsed.geometry.coordinates?.[0]) {
+          finalRouteCoords = parsed.geometry.coordinates[0];
+        } else if (parsed.type === "Feature" && parsed.geometry?.coordinates?.[0]) {
+          finalRouteCoords = parsed.geometry.coordinates[0];
+        }
+      } catch (e) {
+        console.warn("Could not extract route coordinates fallback:", e);
+      }
+    }
+
     territoryId = `territory_${Date.now()}`;
     const territoryDoc: Territory = {
       id: territoryId,
@@ -484,7 +501,7 @@ export async function saveRunningSessionAndTerritory(params: {
       userName: userName || "Streaker",
       sessionId,
       polygonGeoJSON: polygonToSave,
-      routeGeoJSON: JSON.stringify(routeCoordinates),
+      routeGeoJSON: JSON.stringify(finalRouteCoords && finalRouteCoords.length >= 2 ? finalRouteCoords : routeCoordinates),
       areaSquareMeters: Math.max(1, areaToSave),
       distanceMeters: Math.round(distanceMeters),
       durationSeconds: Math.round(durationSeconds),
@@ -522,12 +539,16 @@ export async function saveRunningSessionAndTerritory(params: {
 
   try {
     const userDocRef = doc(db, USERS_COLLECTION, userId);
-    await updateDoc(userDocRef, {
-      totalTerritoryArea: Math.round(finalTotalArea),
-      ...(updatedCumulativeGeoJSON
-        ? { cumulativeTerritoryGeoJSON: updatedCumulativeGeoJSON }
-        : {}),
-    });
+    await setDoc(
+      userDocRef,
+      {
+        totalTerritoryArea: Math.round(finalTotalArea),
+        ...(updatedCumulativeGeoJSON
+          ? { cumulativeTerritoryGeoJSON: updatedCumulativeGeoJSON }
+          : {}),
+      },
+      { merge: true }
+    );
   } catch (err) {
     console.warn("Failed to update user cumulative territory in Firestore:", err);
   }

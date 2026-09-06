@@ -54,6 +54,8 @@ export default function GodModeView() {
     profile?.name?.trim() ||
     user?.displayName?.trim() ||
     (user?.email ? user.email.split("@")[0] : "") ||
+    (user?.phoneNumber ? user.phoneNumber : "") ||
+    (typeof window !== "undefined" ? localStorage.getItem("aim_user_name") || localStorage.getItem("aim_username") || "" : "") ||
     "Streaker";
 
   // Active Run State
@@ -91,17 +93,19 @@ export default function GodModeView() {
   const watchIdRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load World Territories and User Permanent Territory
+  // Load World Territories and User Permanent Territory (unconditional for all users)
   const loadTerritoryData = useCallback(async () => {
-    if (!user) return;
     try {
-      const [allTerritories, userStats] = await Promise.all([
-        getAllWorldTerritories(200),
-        getUserCumulativeTerritory(user.uid),
-      ]);
-      setWorldTerritories(allTerritories);
-      setTotalCumulativeArea(userStats.totalTerritoryArea);
-      setCumulativeTerritoryGeoJSON(userStats.cumulativeTerritoryGeoJSON);
+      const allTerritories = await getAllWorldTerritories(200);
+      if (allTerritories && allTerritories.length > 0) {
+        setWorldTerritories(allTerritories);
+      }
+
+      if (user?.uid) {
+        const userStats = await getUserCumulativeTerritory(user.uid);
+        setTotalCumulativeArea(userStats.totalTerritoryArea);
+        setCumulativeTerritoryGeoJSON(userStats.cumulativeTerritoryGeoJSON);
+      }
     } catch (err) {
       console.error("Failed to load territory data:", err);
     }
@@ -285,36 +289,6 @@ export default function GodModeView() {
 
     const finalDistance = calculateRouteDistance(finalFiltered);
 
-    // Persist session and territory in Firestore forever
-    if (user) {
-      try {
-        await saveRunningSessionAndTerritory({
-          userId: user.uid,
-          userName: runnerName,
-          startedAt: startedAt || endedAt,
-          endedAt,
-          distanceMeters: finalDistance,
-          durationSeconds,
-          newPolygonGeoJSON: result.newPolygonGeoJSON,
-          newUniqueAreaMeters: result.newUniqueAreaMeters,
-          updatedCumulativeGeoJSON: result.updatedCumulativeGeoJSON,
-          totalCumulativeAreaMeters: result.totalCumulativeAreaMeters,
-          routeCoordinates: liveRouteCoordinates,
-        });
-
-        // Update local state with new cumulative values
-        setTotalCumulativeArea(result.totalCumulativeAreaMeters);
-        if (result.updatedCumulativeGeoJSON) {
-          setCumulativeTerritoryGeoJSON(result.updatedCumulativeGeoJSON);
-        }
-
-        // Refresh world territories immediately so new run appears on map
-        await loadTerritoryData();
-      } catch (err) {
-        console.error("Failed to save running session to Firestore:", err);
-      }
-    }
-
     // Determine final display area
     const effectiveArea =
       result.newUniqueAreaMeters > 0
@@ -322,6 +296,72 @@ export default function GodModeView() {
         : result.rawAreaMeters > 0
         ? result.rawAreaMeters
         : Math.max(1, Math.round(finalDistance * 15));
+
+    const coordsToSave = [...liveRouteCoordinates];
+    setRawGPSPoints([]);
+    setLiveRouteCoordinates([]);
+
+    // Optimistically construct and inject territory so the shape NEVER disappears
+    const polyGeo =
+      result.newPolygonGeoJSON ||
+      (coordsToSave.length >= 3
+        ? (() => {
+            try {
+              const closed = [...coordsToSave, coordsToSave[0]];
+              return JSON.stringify(turf.polygon([closed]));
+            } catch {
+              return null;
+            }
+          })()
+        : null);
+
+    if (polyGeo) {
+      const optimisticTerritory: Territory = {
+        id: `territory_${Date.now()}`,
+        userId: user?.uid || "current_user",
+        userName: runnerName,
+        sessionId: `session_${Date.now()}`,
+        polygonGeoJSON: polyGeo,
+        routeGeoJSON: JSON.stringify(coordsToSave),
+        areaSquareMeters: effectiveArea,
+        distanceMeters: Math.round(finalDistance),
+        durationSeconds,
+        createdAt: endedAt,
+      };
+      setWorldTerritories((prev) => [
+        optimisticTerritory,
+        ...prev.filter((t) => t.id !== optimisticTerritory.id),
+      ]);
+    }
+
+    // Persist session and territory in Firestore and local cache forever
+    const currentUserId = user?.uid || "local_user";
+    try {
+      await saveRunningSessionAndTerritory({
+        userId: currentUserId,
+        userName: runnerName,
+        startedAt: startedAt || endedAt,
+        endedAt,
+        distanceMeters: finalDistance,
+        durationSeconds,
+        newPolygonGeoJSON: result.newPolygonGeoJSON || polyGeo,
+        newUniqueAreaMeters: result.newUniqueAreaMeters,
+        updatedCumulativeGeoJSON: result.updatedCumulativeGeoJSON,
+        totalCumulativeAreaMeters: result.totalCumulativeAreaMeters,
+        routeCoordinates: coordsToSave,
+      });
+
+      // Update local state with new cumulative values
+      setTotalCumulativeArea(result.totalCumulativeAreaMeters);
+      if (result.updatedCumulativeGeoJSON) {
+        setCumulativeTerritoryGeoJSON(result.updatedCumulativeGeoJSON);
+      }
+
+      // Refresh world territories to confirm cloud sync
+      await loadTerritoryData();
+    } catch (err) {
+      console.error("Failed to save running session:", err);
+    }
 
     // Open Summary Modal
     setSummaryModalData({
@@ -364,8 +404,24 @@ export default function GodModeView() {
 
   // Developer Simulator: Generates a realistic closed walking loop around current location
   const handleTriggerDevSimulation = () => {
-    const centerLat = currentLocation ? currentLocation.latitude : 40.7829;
-    const centerLng = currentLocation ? currentLocation.longitude : -73.9654;
+    let centerLat = 23.0495;
+    let centerLng = 72.5123;
+
+    if (worldTerritories && worldTerritories.length > 0) {
+      try {
+        const latest = worldTerritories[0];
+        const parsed = JSON.parse(latest.polygonGeoJSON);
+        const geom = parsed.geometry ? parsed.geometry : parsed;
+        const c = turf.centroid(geom);
+        centerLng = c.geometry.coordinates[0];
+        centerLat = c.geometry.coordinates[1];
+      } catch (e) {
+        // fallback
+      }
+    } else if (currentLocation && (!gpsAccuracy || gpsAccuracy < 300)) {
+      centerLat = currentLocation.latitude;
+      centerLng = currentLocation.longitude;
+    }
 
     const offset = 0.0015; // ~150 meters
     const simulatedPoints: GPSPoint[] = [
