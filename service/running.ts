@@ -9,6 +9,7 @@ export interface GPSPoint {
 export interface RunningSession {
   id?: string;
   userId: string;
+  userName?: string;
   startedAt: string;
   endedAt: string;
   distanceMeters: number;
@@ -24,7 +25,10 @@ export interface Territory {
   userName: string;
   sessionId: string;
   polygonGeoJSON: string; // Serialized GeoJSON Feature<Polygon | MultiPolygon>
+  routeGeoJSON?: string; // Serialized GeoJSON LineString coordinates [[lng, lat], ...]
   areaSquareMeters: number;
+  distanceMeters?: number;
+  durationSeconds?: number;
   createdAt: string;
 }
 

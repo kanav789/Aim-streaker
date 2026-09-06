@@ -16,6 +16,8 @@ import {
 import { RunningHud } from "./components/running-hud";
 import { RunSummaryModal } from "./components/run-summary-modal";
 import { LocationErrorBanner } from "./components/location-error-banner";
+import { GpsPermissionModal } from "./components/gps-permission-modal";
+import { WorldStreakersFeed } from "./components/world-streakers-feed";
 import * as turf from "@turf/turf";
 
 // Dynamically import MapView to disable SSR for WebGL
@@ -40,6 +42,19 @@ export default function GodModeView() {
   } | null>(null);
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [isAcquiringGps, setIsAcquiringGps] = useState<boolean>(true);
+  const [isSignalLost, setIsSignalLost] = useState<boolean>(false);
+  const [isGpsModalOpen, setIsGpsModalOpen] = useState<boolean>(false);
+  const [isWorldFeedOpen, setIsWorldFeedOpen] = useState<boolean>(false);
+  const [focusCoordinates, setFocusCoordinates] = useState<[number, number] | null>(null);
+  const [focusBounds, setFocusBounds] = useState<[number, number, number, number] | null>(null);
+
+  // Resolved runner name
+  const runnerName =
+    profile?.name?.trim() ||
+    user?.displayName?.trim() ||
+    (user?.email ? user.email.split("@")[0] : "") ||
+    "Streaker";
 
   // Active Run State
   const [isRunning, setIsRunning] = useState(false);
@@ -111,11 +126,15 @@ export default function GodModeView() {
     setLiveRouteCoordinates(pointsToDraw.map((p) => [p.longitude, p.latitude]));
   }, [rawGPSPoints]);
 
-  // Request initial GPS position
+  // Request GPS position (Ask Mode & Device Check)
   const requestLocation = useCallback(() => {
+    setIsAcquiringGps(true);
     setLocationError(null);
+    setIsSignalLost(false);
+
     if (typeof window === "undefined" || !("geolocation" in navigator)) {
       setLocationError("Geolocation is not supported by your browser/device.");
+      setIsAcquiringGps(false);
       return;
     }
 
@@ -125,17 +144,22 @@ export default function GodModeView() {
         setCurrentLocation({ latitude, longitude });
         setGpsAccuracy(accuracy);
         setLocationError(null);
+        setIsAcquiringGps(false);
+        setIsSignalLost(false);
       },
       (err) => {
         let msg = "Failed to acquire GPS location.";
         if (err.code === err.PERMISSION_DENIED) {
-          msg = "Location permission was denied. Please enable GPS permissions in your browser.";
+          msg = "Location permission was denied. Please allow location access in your browser to track your run.";
         } else if (err.code === err.POSITION_UNAVAILABLE) {
-          msg = "GPS location is currently unavailable. Ensure device location is turned on.";
+          msg = "Device GPS / Location is turned off. Please turn on Location in your device settings.";
         } else if (err.code === err.TIMEOUT) {
-          msg = "GPS location request timed out. Please try again in an open area.";
+          msg = "GPS location request timed out. Please check your signal and try again.";
         }
         setLocationError(msg);
+        setCurrentLocation(null);
+        setGpsAccuracy(null);
+        setIsAcquiringGps(false);
       },
       {
         enableHighAccuracy: true,
@@ -145,14 +169,50 @@ export default function GodModeView() {
     );
   }, []);
 
+  // Request initial location on mount
   useEffect(() => {
     requestLocation();
   }, [requestLocation]);
 
+  // Observe browser permission changes (e.g. user toggles permissions in site settings)
+  useEffect(() => {
+    if (typeof window === "undefined" || !("permissions" in navigator)) return;
+    navigator.permissions
+      ?.query({ name: "geolocation" as PermissionName })
+      ?.then((status) => {
+        status.onchange = () => {
+          if (status.state === "granted") {
+            requestLocation();
+          } else if (status.state === "denied") {
+            setLocationError(
+              "Location permission was denied. Please allow location access in your browser to track your run."
+            );
+            setCurrentLocation(null);
+            setGpsAccuracy(null);
+            setIsAcquiringGps(false);
+          }
+        };
+      })
+      ?.catch(() => {
+        // Permissions query not supported on this browser
+      });
+  }, [requestLocation]);
+
   // Start Running Session
   const handleStartRun = () => {
-    if (!("geolocation" in navigator)) {
+    if (typeof window === "undefined" || !("geolocation" in navigator)) {
       setLocationError("Geolocation is not supported on this device.");
+      setIsGpsModalOpen(true);
+      return;
+    }
+
+    // Strict Guard: Prevent starting running if GPS is off, denied, unavailable, or still acquiring
+    if (!currentLocation || locationError || isAcquiringGps) {
+      if (locationError) {
+        setIsGpsModalOpen(true);
+      } else {
+        requestLocation();
+      }
       return;
     }
 
@@ -162,6 +222,7 @@ export default function GodModeView() {
     setDistanceMeters(0);
     setRawGPSPoints([]);
     setLiveRouteCoordinates([]);
+    setIsSignalLost(false);
 
     // Start live duration counter
     timerIntervalRef.current = setInterval(() => {
@@ -174,6 +235,7 @@ export default function GodModeView() {
         const { latitude, longitude, accuracy, speed } = pos.coords;
         setCurrentLocation({ latitude, longitude });
         setGpsAccuracy(accuracy);
+        setIsSignalLost(false);
 
         const newPoint: GPSPoint = {
           latitude,
@@ -187,6 +249,7 @@ export default function GodModeView() {
       },
       (err) => {
         console.warn("GPS tracking warning:", err.message);
+        setIsSignalLost(true);
       },
       {
         enableHighAccuracy: true,
@@ -222,12 +285,12 @@ export default function GodModeView() {
 
     const finalDistance = calculateRouteDistance(finalFiltered);
 
-    // Persist session and territory in Firestore
+    // Persist session and territory in Firestore forever
     if (user) {
       try {
         await saveRunningSessionAndTerritory({
           userId: user.uid,
-          userName: profile?.name || "Streaker",
+          userName: runnerName,
           startedAt: startedAt || endedAt,
           endedAt,
           distanceMeters: finalDistance,
@@ -245,22 +308,32 @@ export default function GodModeView() {
           setCumulativeTerritoryGeoJSON(result.updatedCumulativeGeoJSON);
         }
 
-        // Refresh world territories
+        // Refresh world territories immediately so new run appears on map
         await loadTerritoryData();
       } catch (err) {
         console.error("Failed to save running session to Firestore:", err);
       }
     }
 
+    // Determine final display area
+    const effectiveArea =
+      result.newUniqueAreaMeters > 0
+        ? result.newUniqueAreaMeters
+        : result.rawAreaMeters > 0
+        ? result.rawAreaMeters
+        : Math.max(1, Math.round(finalDistance * 15));
+
     // Open Summary Modal
     setSummaryModalData({
       isOpen: true,
       distanceMeters: finalDistance,
       durationSeconds,
-      newAreaMeters: result.newUniqueAreaMeters,
-      totalCumulativeAreaMeters: result.totalCumulativeAreaMeters,
+      newAreaMeters: effectiveArea,
+      totalCumulativeAreaMeters: Math.max(totalCumulativeArea, result.totalCumulativeAreaMeters),
       isValidLoop: result.isValidLoop,
-      summaryMessage: result.message,
+      summaryMessage: result.isValidLoop
+        ? result.message
+        : "Route completed & saved forever! Your claimed corridor is now etched on the world map.",
     });
   };
 
@@ -299,10 +372,13 @@ export default function GodModeView() {
       { latitude: centerLat, longitude: centerLng, timestamp: Date.now(), accuracy: 5, speed: 2.2 },
       { latitude: centerLat + offset, longitude: centerLng, timestamp: Date.now() + 10000, accuracy: 5, speed: 2.4 },
       { latitude: centerLat + offset, longitude: centerLng + offset, timestamp: Date.now() + 20000, accuracy: 5, speed: 2.3 },
-      { latitude: centerLat, longitude: centerLng + offset, timestamp: Date.now() + 30000, accuracy: 5, speed: 2.5 },
+      { latitude: centerLat, longitude: centerLng + offset, timestamp: Date.now() + 30000, accuracy: 2.5, speed: 2.5 },
       { latitude: centerLat, longitude: centerLng, timestamp: Date.now() + 40000, accuracy: 5, speed: 2.1 },
     ];
 
+    setLocationError(null);
+    setIsAcquiringGps(false);
+    setIsSignalLost(false);
     setRawGPSPoints(simulatedPoints);
     setLiveRouteCoordinates(simulatedPoints.map((p) => [p.longitude, p.latitude]));
     const dist = calculateRouteDistance(simulatedPoints);
@@ -314,12 +390,30 @@ export default function GodModeView() {
     setStartedAt(new Date(Date.now() - 180000).toISOString());
   };
 
+  // Calculate live covered area from raw GPS points while running
+  const liveAreaMeters = (() => {
+    if (rawGPSPoints.length < 3) return 0;
+    try {
+      const coords = rawGPSPoints.map((p) => [p.longitude, p.latitude]);
+      const closed = [...coords, coords[0]];
+      const poly = turf.polygon([closed]);
+      return Math.round(turf.area(poly));
+    } catch {
+      return 0;
+    }
+  })();
+
   return (
     <div className="relative flex flex-1 flex-col w-full h-[100dvh] overflow-hidden bg-black select-none">
       {/* Location Error Banner */}
       {locationError && (
         <div className="absolute top-16 inset-x-0 z-30">
-          <LocationErrorBanner error={locationError} onRetry={requestLocation} />
+          <LocationErrorBanner
+            error={locationError}
+            isAcquiring={isAcquiringGps}
+            onRetry={requestLocation}
+            onHelp={() => setIsGpsModalOpen(true)}
+          />
         </div>
       )}
 
@@ -329,6 +423,10 @@ export default function GodModeView() {
         liveRouteCoordinates={liveRouteCoordinates}
         worldTerritories={worldTerritories}
         currentUserId={user?.uid || ""}
+        focusCoordinates={focusCoordinates}
+        focusBounds={focusBounds}
+        liveDistanceMeters={distanceMeters}
+        liveAreaMeters={liveAreaMeters}
       />
 
       {/* Floating HUD Controls */}
@@ -338,16 +436,64 @@ export default function GodModeView() {
         durationSeconds={durationSeconds}
         totalCumulativeAreaMeters={totalCumulativeArea}
         gpsAccuracy={gpsAccuracy}
+        isGpsReady={!!currentLocation && !locationError}
+        isAcquiringGps={isAcquiringGps}
+        locationError={locationError}
+        isSignalLost={isSignalLost}
         isNearStartPoint={isNearStartPoint}
         hasEnoughPoints={rawGPSPoints.length >= 4}
+        runnerName={runnerName}
+        worldTerritoryCount={worldTerritories.length}
         onStartRun={handleStartRun}
         onFinishRun={handleFinishRun}
+        onRequestGps={requestLocation}
+        onOpenGpsHelp={() => setIsGpsModalOpen(true)}
+        onOpenWorldFeed={() => setIsWorldFeedOpen(true)}
         onTriggerDevSimulation={handleTriggerDevSimulation}
+      />
+
+      {/* World Streakers Feed Drawer */}
+      <WorldStreakersFeed
+        isOpen={isWorldFeedOpen}
+        territories={worldTerritories}
+        currentUserId={user?.uid || ""}
+        onClose={() => setIsWorldFeedOpen(false)}
+        onSelectTerritory={(territory) => {
+          try {
+            let parsed = JSON.parse(territory.polygonGeoJSON);
+            let geom: any = null;
+            if (parsed.type === "FeatureCollection" && parsed.features?.[0]) {
+              geom = parsed.features[0].geometry || parsed.features[0];
+            } else if (parsed.type === "Feature") {
+              geom = parsed.geometry;
+            } else {
+              geom = parsed.geometry ? parsed.geometry : parsed;
+            }
+            if (geom) {
+              const centroid = turf.centroid(geom);
+              const bbox = turf.bbox(geom);
+              setFocusCoordinates(centroid.geometry.coordinates as [number, number]);
+              setFocusBounds(bbox as [number, number, number, number]);
+            }
+          } catch (err) {
+            console.error("Failed to parse territory for focus:", err);
+          }
+        }}
+      />
+
+      {/* GPS Permission & Guidance Modal */}
+      <GpsPermissionModal
+        isOpen={isGpsModalOpen}
+        error={locationError}
+        isAcquiring={isAcquiringGps}
+        onRetry={requestLocation}
+        onClose={() => setIsGpsModalOpen(false)}
       />
 
       {/* Run Summary Modal */}
       <RunSummaryModal
         isOpen={summaryModalData.isOpen}
+        runnerName={runnerName}
         distanceMeters={summaryModalData.distanceMeters}
         durationSeconds={summaryModalData.durationSeconds}
         newAreaMeters={summaryModalData.newAreaMeters}

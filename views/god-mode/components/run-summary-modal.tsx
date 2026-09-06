@@ -3,6 +3,7 @@ import { formatDistance, formatDuration, formatArea, formatPace } from "@/servic
 
 interface RunSummaryModalProps {
   isOpen: boolean;
+  runnerName?: string;
   distanceMeters: number;
   durationSeconds: number;
   newAreaMeters: number;
@@ -14,6 +15,7 @@ interface RunSummaryModalProps {
 
 export function RunSummaryModal({
   isOpen,
+  runnerName,
   distanceMeters,
   durationSeconds,
   newAreaMeters,
@@ -24,7 +26,7 @@ export function RunSummaryModal({
 }: RunSummaryModalProps) {
   if (!isOpen) return null;
 
-  const capturedSuccess = isValidLoop && newAreaMeters > 0;
+  const capturedSuccess = newAreaMeters > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
@@ -37,7 +39,7 @@ export function RunSummaryModal({
         />
 
         {/* Header Icon & Title */}
-        <div className="text-center mb-6">
+        <div className="text-center mb-5">
           <div
             className={`w-16 h-16 mx-auto rounded-3xl flex items-center justify-center text-3xl mb-3 shadow-lg ${
               capturedSuccess
@@ -48,11 +50,19 @@ export function RunSummaryModal({
             {capturedSuccess ? "🏴" : "🏃"}
           </div>
           <h2 className="text-xl font-extrabold tracking-tight">
-            {capturedSuccess ? "Territory Captured!" : "Run Complete"}
+            {capturedSuccess ? "Territory Captured!" : "Run Saved Forever"}
           </h2>
           <p className="text-xs text-zinc-400 mt-1 leading-relaxed px-2">
             {summaryMessage}
           </p>
+
+          {/* Runner Name Badge */}
+          <div className="mt-2.5">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs font-bold text-accent shadow-sm">
+              <span>👑</span>
+              <span>Claimed by: {runnerName || "You"}</span>
+            </span>
+          </div>
         </div>
 
         {/* Metrics Grid */}

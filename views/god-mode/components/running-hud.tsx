@@ -8,10 +8,19 @@ interface RunningHudProps {
   durationSeconds: number;
   totalCumulativeAreaMeters: number;
   gpsAccuracy: number | null;
+  isGpsReady: boolean;
+  isAcquiringGps: boolean;
+  locationError: string | null;
+  isSignalLost: boolean;
   isNearStartPoint: boolean;
   hasEnoughPoints: boolean;
+  runnerName?: string;
+  worldTerritoryCount?: number;
   onStartRun: () => void;
   onFinishRun: () => void;
+  onRequestGps: () => void;
+  onOpenGpsHelp: () => void;
+  onOpenWorldFeed?: () => void;
   onTriggerDevSimulation?: () => void;
 }
 
@@ -21,10 +30,19 @@ export function RunningHud({
   durationSeconds,
   totalCumulativeAreaMeters,
   gpsAccuracy,
+  isGpsReady,
+  isAcquiringGps,
+  locationError,
+  isSignalLost,
   isNearStartPoint,
   hasEnoughPoints,
+  runnerName,
+  worldTerritoryCount = 0,
   onStartRun,
   onFinishRun,
+  onRequestGps,
+  onOpenGpsHelp,
+  onOpenWorldFeed,
   onTriggerDevSimulation,
 }: RunningHudProps) {
   const isDev = process.env.NODE_ENV === "development";
@@ -55,7 +73,11 @@ export function RunningHud({
         <div className="pointer-events-auto flex items-center gap-2 rounded-2xl bg-zinc-950/80 backdrop-blur-md border border-zinc-800 px-3.5 py-2 shadow-lg">
           <div
             className={`w-2.5 h-2.5 rounded-full ${
-              gpsAccuracy !== null && gpsAccuracy <= 30
+              isSignalLost || locationError
+                ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]"
+                : isAcquiringGps
+                ? "bg-sky-400 animate-ping"
+                : gpsAccuracy !== null && gpsAccuracy <= 30
                 ? "bg-accent shadow-[0_0_8px_rgba(163,255,18,0.8)] animate-pulse"
                 : gpsAccuracy !== null
                 ? "bg-amber-400"
@@ -63,14 +85,36 @@ export function RunningHud({
             }`}
           />
           <span className="text-xs font-bold tracking-tight text-white">
-            {gpsAccuracy !== null ? `GPS ±${Math.round(gpsAccuracy)}m` : "Acquiring GPS..."}
+            {locationError
+              ? "GPS Unavailable"
+              : isSignalLost
+              ? "Signal Lost"
+              : isAcquiringGps
+              ? "Acquiring GPS..."
+              : gpsAccuracy !== null
+              ? `GPS ±${Math.round(gpsAccuracy)}m`
+              : "Acquiring GPS..."}
           </span>
         </div>
 
-        {/* Right: Permanent Territory Pill */}
-        <div className="pointer-events-auto flex items-center gap-1.5 rounded-2xl bg-zinc-950/80 backdrop-blur-md border border-zinc-800 px-3 py-2 text-xs font-bold text-white shadow-lg">
-          <span className="text-accent text-sm">🏴</span>
-          <span className="font-mono">{formatArea(totalCumulativeAreaMeters)}</span>
+        {/* Right: World Feed button & Permanent Territory Pill */}
+        <div className="flex items-center gap-2 pointer-events-auto">
+          {onOpenWorldFeed && (
+            <button
+              onClick={onOpenWorldFeed}
+              className="flex items-center gap-1.5 rounded-2xl bg-zinc-950/80 backdrop-blur-md border border-zinc-800 px-3 py-2 text-xs font-bold text-sky-400 shadow-lg hover:border-sky-500/50 hover:bg-sky-950/30 active:scale-95 transition"
+              title="Open World Streakers Feed"
+            >
+              <span>🌍</span>
+              <span className="hidden sm:inline">World</span>
+              <span>Feed ({worldTerritoryCount})</span>
+            </button>
+          )}
+
+          <div className="flex items-center gap-1.5 rounded-2xl bg-zinc-950/80 backdrop-blur-md border border-zinc-800 px-3 py-2 text-xs font-bold text-white shadow-lg">
+            <span className="text-accent text-sm">🏴</span>
+            <span className="font-mono">{formatArea(totalCumulativeAreaMeters)}</span>
+          </div>
         </div>
       </div>
 
@@ -80,25 +124,58 @@ export function RunningHud({
           {!isRunning ? (
             /* Idle Pre-Run State */
             <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
                   <h3 className="text-sm font-extrabold text-white tracking-tight flex items-center gap-1.5">
                     Ready to Run ⚡
                   </h3>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Close an enclosed loop to capture new territory.
+                    Run anywhere or close a loop — all runs claim territory with your name.
                   </p>
+                </div>
+                <div className="shrink-0 px-2.5 py-1 rounded-xl bg-zinc-900 border border-zinc-800 text-[11px] font-bold text-accent flex items-center gap-1 max-w-[120px]">
+                  <span>👑</span>
+                  <span className="truncate">{runnerName || "You"}</span>
                 </div>
               </div>
 
-              {/* Start Button */}
-              <button
-                onClick={onStartRun}
-                className="w-full h-14 rounded-2xl bg-accent text-black font-extrabold text-base tracking-wide flex items-center justify-center gap-2 shadow-[0_4px_25px_rgba(163,255,18,0.3)] hover:bg-accent/90 active:scale-[0.98] transition select-none"
-              >
-                <span>🏃</span>
-                <span>Start Running</span>
-              </button>
+              {/* Start Button or GPS Warning Button */}
+              {isAcquiringGps ? (
+                <button
+                  disabled
+                  className="w-full h-14 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold text-sm tracking-wide flex items-center justify-center gap-2.5 cursor-not-allowed select-none"
+                >
+                  <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                  <span>Acquiring GPS Signal...</span>
+                </button>
+              ) : !isGpsReady || locationError ? (
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={onRequestGps}
+                    className="w-full h-14 rounded-2xl bg-amber-500/20 border border-amber-500/50 text-amber-300 font-extrabold text-sm tracking-wide flex items-center justify-center gap-2 shadow-[0_4px_25px_rgba(245,158,11,0.15)] hover:bg-amber-500/30 active:scale-[0.98] transition select-none"
+                  >
+                    <span>⚠️</span>
+                    <span>Turn On GPS to Start</span>
+                  </button>
+                  <div className="flex items-center justify-between text-[11px] text-zinc-400 px-1">
+                    <span className="text-amber-400/90 font-medium">GPS is required to track run & capture territory</span>
+                    <button
+                      onClick={onOpenGpsHelp}
+                      className="text-zinc-300 hover:text-white underline font-semibold transition"
+                    >
+                      Need Help?
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={onStartRun}
+                  className="w-full h-14 rounded-2xl bg-accent text-black font-extrabold text-base tracking-wide flex items-center justify-center gap-2 shadow-[0_4px_25px_rgba(163,255,18,0.3)] hover:bg-accent/90 active:scale-[0.98] transition select-none"
+                >
+                  <span>🏃</span>
+                  <span>Start Running</span>
+                </button>
+              )}
 
               {/* Dev Simulation Option (desktop/local testing) */}
               {isDev && onTriggerDevSimulation && (
@@ -114,6 +191,14 @@ export function RunningHud({
           ) : (
             /* Active Running State */
             <div className="flex flex-col gap-4">
+              {/* Mid-run GPS Signal Lost Warning */}
+              {isSignalLost && (
+                <div className="py-2 px-3.5 rounded-2xl bg-red-950/80 border border-red-500/50 text-center text-xs font-bold text-red-200 animate-pulse flex items-center justify-center gap-2 shadow-lg">
+                  <span>⚠️</span>
+                  <span>GPS signal lost — Searching for satellites... Keep moving, your route is safe.</span>
+                </div>
+              )}
+
               {/* Loop Status Pill */}
               <div
                 className={`py-1.5 px-3 rounded-full text-center text-xs font-bold border transition duration-300 ${
