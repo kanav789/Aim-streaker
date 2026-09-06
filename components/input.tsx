@@ -22,8 +22,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         <input
           ref={ref}
           id={inputId}
-          className={`w-full rounded-md border bg-surface px-3 py-2 text-primary outline-none transition placeholder:text-secondary/60 focus:border-accent ${
-            error ? "border-accent" : "border-border"
+          className={`w-full rounded-2xl border bg-zinc-950 px-4 h-14 text-primary outline-none transition placeholder:text-zinc-600 focus:border-accent ${
+            error ? "border-accent" : "border-zinc-800"
           } ${className}`}
           {...props}
         />

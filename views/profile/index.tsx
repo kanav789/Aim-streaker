@@ -7,13 +7,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { Input } from "@/components/input";
 import { useAuth } from "@/context/auth-context";
+import { useAims } from "@/context/aims-context";
 import { logout, updateUserPassword } from "@/service/auth";
-import {
-  getUserProfile,
-  updateUserName,
-  updateUserAvatar,
-  type UserProfile,
-} from "@/service/user";
+import { type UserProfile } from "@/service/user";
 import { FirebaseError } from "firebase/app";
 
 const BEGINNER_AVATARS = [
@@ -27,8 +23,8 @@ const BEGINNER_AVATARS = [
 export default function ProfileView() {
   const router = useRouter();
   const { user } = useAuth();
+  const { profile, updateUserNameAction, updateUserAvatarAction } = useAims();
   
-  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -41,21 +37,12 @@ export default function ProfileView() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const fetchProfile = async () => {
-    if (!user) return;
-    try {
-      const userProfile = await getUserProfile(user.uid, "");
-      setProfile(userProfile);
-      setEditName(userProfile.name || "");
-      setSelectedAvatar(userProfile.avatarUrl || "");
-    } catch (err) {
-      console.error("Failed to load user profile", err);
-    }
-  };
-
   useEffect(() => {
-    fetchProfile();
-  }, [user]);
+    if (profile) {
+      setEditName(profile.name || "");
+      setSelectedAvatar(profile.avatarUrl || "");
+    }
+  }, [profile]);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -99,18 +86,16 @@ export default function ProfileView() {
 
     try {
       // 1. Update display name in Firestore
-      await updateUserName(user.uid, editName.trim());
+      await updateUserNameAction(editName.trim());
 
       // 2. Update profile avatarUrl in Firestore
-      await updateUserAvatar(user.uid, selectedAvatar);
+      await updateUserAvatarAction(selectedAvatar);
 
       // 3. Update authentication password if requested
       if (isChangingPassword) {
         await updateUserPassword(profile.phone, currentPassword, newPassword);
       }
 
-      // Re-fetch profile to sync state, reset password fields
-      await fetchProfile();
       setIsEditing(false);
       setCurrentPassword("");
       setNewPassword("");
@@ -221,31 +206,55 @@ export default function ProfileView() {
 
             {/* Navigation Links */}
             <div className="mt-6 w-full flex flex-col gap-3">
+
+              {/* Terms of Service */}
               <Link
-                href="/profile/rewards"
-                className="w-full flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3.5 text-sm font-medium text-primary transition hover:border-secondary/30 active:scale-[0.99]"
+                href="/terms"
+                className="w-full flex items-center justify-between rounded-xl border border-border bg-zinc-950 px-4 py-3.5 text-sm font-medium text-zinc-400 transition hover:border-zinc-800 hover:text-white active:scale-[0.99]"
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-lg">🎁</span>
-                  <span>Rewards Center</span>
+                  <span className="text-base">📄</span>
+                  <span>Terms of Service</span>
                 </div>
-                <div className="flex items-center gap-1 text-xs text-secondary">
-                  <span>View rewards</span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
-                    className="h-4 w-4"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="m8.25 4.5 7.5 7.5-7.5 7.5"
-                    />
-                  </svg>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="h-4 w-4 text-zinc-650"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m8.25 4.5 7.5 7.5-7.5 7.5"
+                  />
+                </svg>
+              </Link>
+
+              {/* Privacy Policy */}
+              <Link
+                href="/privacy"
+                className="w-full flex items-center justify-between rounded-xl border border-border bg-zinc-950 px-4 py-3.5 text-sm font-medium text-zinc-400 transition hover:border-zinc-800 hover:text-white active:scale-[0.99]"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-base">🔒</span>
+                  <span>Privacy Policy</span>
                 </div>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="h-4 w-4 text-zinc-650"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m8.25 4.5 7.5 7.5-7.5 7.5"
+                  />
+                </svg>
               </Link>
             </div>
 

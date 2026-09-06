@@ -1,31 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useAuth } from "@/context/auth-context";
-import { getUserProfile, type UserProfile } from "@/service/user";
+import { useAims } from "@/context/aims-context";
 
 export default function RewardsView() {
-  const { user } = useAuth();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchProfile = async () => {
-      try {
-        const userProfile = await getUserProfile(user.uid, user.email || "");
-        setProfile(userProfile);
-      } catch (err) {
-        console.error("Failed to load rewards profile", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProfile();
-  }, [user]);
+  const { profile, loading } = useAims();
 
   // Mock Reward Items for background visual look
   const mockRewards = [
@@ -38,8 +17,8 @@ export default function RewardsView() {
     <div className="flex min-h-full flex-1 flex-col pb-8">
       {/* Header */}
       <header className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border">
-        <Link href="/profile" className="text-sm text-secondary hover:text-primary">
-          Profile
+        <Link href="/" className="text-sm text-secondary hover:text-primary">
+          Back
         </Link>
         <h1 className="text-lg font-semibold text-primary">Rewards</h1>
         <span className="w-10" aria-hidden />

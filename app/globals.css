@@ -1,6 +1,8 @@
 @import "tailwindcss";
+@import "maplibre-gl/dist/maplibre-gl.css";
 
 @theme {
+  --font-sans: var(--font-inter), sans-serif;
   --color-background: #000000;
   --color-surface: #111111;
   --color-primary: #ffffff;
@@ -13,3 +15,51 @@ body {
   background-color: var(--color-background);
   color: var(--color-primary);
 }
+
+/* Tactical Cyber Map Popup Styles */
+.maplibregl-popup.aim-map-popup {
+  z-index: 50;
+  max-width: 320px !important;
+}
+
+.maplibregl-popup.aim-map-popup .maplibregl-popup-content {
+  background: rgba(9, 11, 15, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1.5px solid rgba(0, 229, 255, 0.45);
+  border-radius: 18px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.9), 0 0 24px rgba(0, 229, 255, 0.25);
+  padding: 14px 18px;
+  color: #ffffff;
+}
+
+.maplibregl-popup.aim-map-popup.self-popup .maplibregl-popup-content {
+  border: 1.5px solid rgba(163, 255, 18, 0.5);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.9), 0 0 24px rgba(163, 255, 18, 0.25);
+}
+
+.maplibregl-popup.aim-map-popup .maplibregl-popup-close-button {
+  color: #71717a;
+  font-size: 18px;
+  top: 10px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.maplibregl-popup.aim-map-popup .maplibregl-popup-close-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.maplibregl-popup.aim-map-popup .maplibregl-popup-tip {
+  border-top-color: rgba(9, 11, 15, 0.94) !important;
+  border-bottom-color: rgba(9, 11, 15, 0.94) !important;
+}
+
