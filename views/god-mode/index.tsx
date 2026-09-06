@@ -17,6 +17,7 @@ import { RunningHud } from "./components/running-hud";
 import { RunSummaryModal } from "./components/run-summary-modal";
 import { LocationErrorBanner } from "./components/location-error-banner";
 import { GpsPermissionModal } from "./components/gps-permission-modal";
+import { WorldStreakersFeed } from "./components/world-streakers-feed";
 import * as turf from "@turf/turf";
 
 // Dynamically import MapView to disable SSR for WebGL
@@ -44,6 +45,16 @@ export default function GodModeView() {
   const [isAcquiringGps, setIsAcquiringGps] = useState<boolean>(true);
   const [isSignalLost, setIsSignalLost] = useState<boolean>(false);
   const [isGpsModalOpen, setIsGpsModalOpen] = useState<boolean>(false);
+  const [isWorldFeedOpen, setIsWorldFeedOpen] = useState<boolean>(false);
+  const [focusCoordinates, setFocusCoordinates] = useState<[number, number] | null>(null);
+  const [focusBounds, setFocusBounds] = useState<[number, number, number, number] | null>(null);
+
+  // Resolved runner name
+  const runnerName =
+    profile?.name?.trim() ||
+    user?.displayName?.trim() ||
+    (user?.email ? user.email.split("@")[0] : "") ||
+    "Streaker";
 
   // Active Run State
   const [isRunning, setIsRunning] = useState(false);
@@ -274,12 +285,12 @@ export default function GodModeView() {
 
     const finalDistance = calculateRouteDistance(finalFiltered);
 
-    // Persist session and territory in Firestore
+    // Persist session and territory in Firestore forever
     if (user) {
       try {
         await saveRunningSessionAndTerritory({
           userId: user.uid,
-          userName: profile?.name || "Streaker",
+          userName: runnerName,
           startedAt: startedAt || endedAt,
           endedAt,
           distanceMeters: finalDistance,
@@ -297,22 +308,32 @@ export default function GodModeView() {
           setCumulativeTerritoryGeoJSON(result.updatedCumulativeGeoJSON);
         }
 
-        // Refresh world territories
+        // Refresh world territories immediately so new run appears on map
         await loadTerritoryData();
       } catch (err) {
         console.error("Failed to save running session to Firestore:", err);
       }
     }
 
+    // Determine final display area
+    const effectiveArea =
+      result.newUniqueAreaMeters > 0
+        ? result.newUniqueAreaMeters
+        : result.rawAreaMeters > 0
+        ? result.rawAreaMeters
+        : Math.max(1, Math.round(finalDistance * 15));
+
     // Open Summary Modal
     setSummaryModalData({
       isOpen: true,
       distanceMeters: finalDistance,
       durationSeconds,
-      newAreaMeters: result.newUniqueAreaMeters,
-      totalCumulativeAreaMeters: result.totalCumulativeAreaMeters,
+      newAreaMeters: effectiveArea,
+      totalCumulativeAreaMeters: Math.max(totalCumulativeArea, result.totalCumulativeAreaMeters),
       isValidLoop: result.isValidLoop,
-      summaryMessage: result.message,
+      summaryMessage: result.isValidLoop
+        ? result.message
+        : "Route completed & saved forever! Your claimed corridor is now etched on the world map.",
     });
   };
 
@@ -369,6 +390,19 @@ export default function GodModeView() {
     setStartedAt(new Date(Date.now() - 180000).toISOString());
   };
 
+  // Calculate live covered area from raw GPS points while running
+  const liveAreaMeters = (() => {
+    if (rawGPSPoints.length < 3) return 0;
+    try {
+      const coords = rawGPSPoints.map((p) => [p.longitude, p.latitude]);
+      const closed = [...coords, coords[0]];
+      const poly = turf.polygon([closed]);
+      return Math.round(turf.area(poly));
+    } catch {
+      return 0;
+    }
+  })();
+
   return (
     <div className="relative flex flex-1 flex-col w-full h-[100dvh] overflow-hidden bg-black select-none">
       {/* Location Error Banner */}
@@ -389,6 +423,10 @@ export default function GodModeView() {
         liveRouteCoordinates={liveRouteCoordinates}
         worldTerritories={worldTerritories}
         currentUserId={user?.uid || ""}
+        focusCoordinates={focusCoordinates}
+        focusBounds={focusBounds}
+        liveDistanceMeters={distanceMeters}
+        liveAreaMeters={liveAreaMeters}
       />
 
       {/* Floating HUD Controls */}
@@ -404,11 +442,43 @@ export default function GodModeView() {
         isSignalLost={isSignalLost}
         isNearStartPoint={isNearStartPoint}
         hasEnoughPoints={rawGPSPoints.length >= 4}
+        runnerName={runnerName}
+        worldTerritoryCount={worldTerritories.length}
         onStartRun={handleStartRun}
         onFinishRun={handleFinishRun}
         onRequestGps={requestLocation}
         onOpenGpsHelp={() => setIsGpsModalOpen(true)}
+        onOpenWorldFeed={() => setIsWorldFeedOpen(true)}
         onTriggerDevSimulation={handleTriggerDevSimulation}
+      />
+
+      {/* World Streakers Feed Drawer */}
+      <WorldStreakersFeed
+        isOpen={isWorldFeedOpen}
+        territories={worldTerritories}
+        currentUserId={user?.uid || ""}
+        onClose={() => setIsWorldFeedOpen(false)}
+        onSelectTerritory={(territory) => {
+          try {
+            let parsed = JSON.parse(territory.polygonGeoJSON);
+            let geom: any = null;
+            if (parsed.type === "FeatureCollection" && parsed.features?.[0]) {
+              geom = parsed.features[0].geometry || parsed.features[0];
+            } else if (parsed.type === "Feature") {
+              geom = parsed.geometry;
+            } else {
+              geom = parsed.geometry ? parsed.geometry : parsed;
+            }
+            if (geom) {
+              const centroid = turf.centroid(geom);
+              const bbox = turf.bbox(geom);
+              setFocusCoordinates(centroid.geometry.coordinates as [number, number]);
+              setFocusBounds(bbox as [number, number, number, number]);
+            }
+          } catch (err) {
+            console.error("Failed to parse territory for focus:", err);
+          }
+        }}
       />
 
       {/* GPS Permission & Guidance Modal */}
@@ -423,6 +493,7 @@ export default function GodModeView() {
       {/* Run Summary Modal */}
       <RunSummaryModal
         isOpen={summaryModalData.isOpen}
+        runnerName={runnerName}
         distanceMeters={summaryModalData.distanceMeters}
         durationSeconds={summaryModalData.durationSeconds}
         newAreaMeters={summaryModalData.newAreaMeters}

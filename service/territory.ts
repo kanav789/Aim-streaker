@@ -292,7 +292,8 @@ export function evaluateRouteForTerritory(
 /**
  * Fetches all world territories for the shared world map.
  */
-export async function getAllWorldTerritories(limitCount = 150): Promise<Territory[]> {
+export async function getAllWorldTerritories(limitCount = 200): Promise<Territory[]> {
+  let firestoreTerritories: Territory[] = [];
   try {
     const q = query(
       collection(db, TERRITORIES_COLLECTION),
@@ -300,42 +301,49 @@ export async function getAllWorldTerritories(limitCount = 150): Promise<Territor
       limit(limitCount)
     );
     const snap = await getDocs(q);
-    const firestoreTerritories = snap.docs.map((doc) => ({
+    firestoreTerritories = snap.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     })) as Territory[];
+  } catch (err) {
+    console.warn("Firestore query with orderBy failed, attempting plain query fallback:", err);
+    try {
+      const qFallback = query(
+        collection(db, TERRITORIES_COLLECTION),
+        limit(limitCount)
+      );
+      const snapFallback = await getDocs(qFallback);
+      firestoreTerritories = snapFallback.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Territory[];
+      firestoreTerritories.sort(
+        (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      );
+    } catch (fallbackErr) {
+      console.warn("Firestore query failed entirely. Using local fallback:", fallbackErr);
+    }
+  }
 
-    // Also sync and merge any offline/fallback territories
-    if (typeof window !== "undefined") {
-      try {
-        const localRaw = localStorage.getItem("aim_local_territories");
-        if (localRaw) {
-          const localList: Territory[] = JSON.parse(localRaw);
-          const existingIds = new Set(firestoreTerritories.map((t) => t.id));
-          for (const item of localList) {
-            if (item.id && !existingIds.has(item.id)) {
-              firestoreTerritories.unshift(item);
-            }
+  // Also sync and merge any offline/fallback territories
+  if (typeof window !== "undefined") {
+    try {
+      const localRaw = localStorage.getItem("aim_local_territories");
+      if (localRaw) {
+        const localList: Territory[] = JSON.parse(localRaw);
+        const existingIds = new Set(firestoreTerritories.map((t) => t.id));
+        for (const item of localList) {
+          if (item.id && !existingIds.has(item.id)) {
+            firestoreTerritories.unshift(item);
           }
         }
-      } catch (e) {
-        console.warn("Failed to parse local territories:", e);
       }
+    } catch (e) {
+      console.warn("Failed to parse local territories:", e);
     }
-
-    return firestoreTerritories;
-  } catch (err) {
-    console.warn("Firestore query failed (check rules). Using local fallback:", err);
-    if (typeof window !== "undefined") {
-      try {
-        const localRaw = localStorage.getItem("aim_local_territories");
-        if (localRaw) return JSON.parse(localRaw);
-      } catch (e) {
-        console.warn("Failed to parse local fallback:", e);
-      }
-    }
-    return [];
   }
+
+  return firestoreTerritories;
 }
 
 /**
@@ -415,15 +423,45 @@ export async function saveRunningSessionAndTerritory(params: {
   let sessionId = `session_${Date.now()}`;
   let territoryId: string | undefined = undefined;
 
-  // 1. Create running_sessions doc
+  // Determine the territory polygon to be permanently etched into the world map
+  let polygonToSave = newPolygonGeoJSON;
+  let areaToSave = Math.round(newUniqueAreaMeters);
+
+  // If no closed loop polygon was captured, but runner traversed at least 2 points:
+  // Automatically generate a 15-meter wide corridor polygon along their running route!
+  if (!polygonToSave && routeCoordinates.length >= 2) {
+    try {
+      const line = turf.lineString(routeCoordinates);
+      const corridor = turf.buffer(line, 0.015, { units: "kilometers" });
+      if (corridor) {
+        polygonToSave = JSON.stringify(corridor);
+        areaToSave = Math.max(1, Math.round(turf.area(corridor)));
+      }
+    } catch (err) {
+      console.warn("Failed to generate route corridor buffer:", err);
+    }
+  }
+
+  // If a loop polygon exists but area was 0 (e.g. self-overlap or re-running), compute raw polygon area
+  if (polygonToSave && areaToSave <= 0) {
+    try {
+      const parsed = JSON.parse(polygonToSave);
+      areaToSave = Math.max(1, Math.round(turf.area(parsed)));
+    } catch (e) {
+      areaToSave = 1;
+    }
+  }
+
+  // 1. Create running_sessions doc (saved forever in Firestore)
   const sessionDoc: Omit<RunningSession, "id"> = {
     userId,
+    userName: userName || "Streaker",
     startedAt,
     endedAt,
     distanceMeters: Math.round(distanceMeters),
     durationSeconds: Math.round(durationSeconds),
     status: "completed",
-    newAreaSquareMeters: Math.round(newUniqueAreaMeters),
+    newAreaSquareMeters: Math.max(0, areaToSave),
     routeGeoJSON: JSON.stringify(routeCoordinates),
   };
 
@@ -437,16 +475,19 @@ export async function saveRunningSessionAndTerritory(params: {
     console.warn("Firestore save session failed (check rules):", err);
   }
 
-  // 2. If valid new polygon captured, save into shared world territories collection
-  if (newPolygonGeoJSON && newUniqueAreaMeters > 0) {
+  // 2. Save territory into shared world territories collection forever!
+  if (polygonToSave) {
     territoryId = `territory_${Date.now()}`;
     const territoryDoc: Territory = {
       id: territoryId,
       userId,
       userName: userName || "Streaker",
       sessionId,
-      polygonGeoJSON: newPolygonGeoJSON,
-      areaSquareMeters: Math.round(newUniqueAreaMeters),
+      polygonGeoJSON: polygonToSave,
+      routeGeoJSON: JSON.stringify(routeCoordinates),
+      areaSquareMeters: Math.max(1, areaToSave),
+      distanceMeters: Math.round(distanceMeters),
+      durationSeconds: Math.round(durationSeconds),
       createdAt: new Date().toISOString(),
     };
 
@@ -460,12 +501,12 @@ export async function saveRunningSessionAndTerritory(params: {
       console.warn("Firestore save territory failed (check rules):", err);
     }
 
-    // Always update local storage cache as well
+    // Always update local storage cache as well for offline/instant access
     if (typeof window !== "undefined") {
       try {
         const localRaw = localStorage.getItem("aim_local_territories");
         const list: Territory[] = localRaw ? JSON.parse(localRaw) : [];
-        list.unshift(territoryDoc);
+        list.unshift({ ...territoryDoc, id: territoryId });
         localStorage.setItem("aim_local_territories", JSON.stringify(list));
       } catch (e) {
         console.warn("Failed to cache territory locally:", e);
@@ -474,10 +515,15 @@ export async function saveRunningSessionAndTerritory(params: {
   }
 
   // 3. Update user profile cumulative stats in users/{userId}
+  const finalTotalArea = Math.max(
+    totalCumulativeAreaMeters,
+    totalCumulativeAreaMeters + (newUniqueAreaMeters > 0 ? newUniqueAreaMeters : areaToSave)
+  );
+
   try {
     const userDocRef = doc(db, USERS_COLLECTION, userId);
     await updateDoc(userDocRef, {
-      totalTerritoryArea: Math.round(totalCumulativeAreaMeters),
+      totalTerritoryArea: Math.round(finalTotalArea),
       ...(updatedCumulativeGeoJSON
         ? { cumulativeTerritoryGeoJSON: updatedCumulativeGeoJSON }
         : {}),
@@ -489,7 +535,10 @@ export async function saveRunningSessionAndTerritory(params: {
   // Store local user cache as backup
   if (typeof window !== "undefined") {
     try {
-      localStorage.setItem(`aim_user_area_${userId}`, Math.round(totalCumulativeAreaMeters).toString());
+      localStorage.setItem(
+        `aim_user_area_${userId}`,
+        Math.round(finalTotalArea).toString()
+      );
       if (updatedCumulativeGeoJSON) {
         localStorage.setItem(`aim_user_geo_${userId}`, updatedCumulativeGeoJSON);
       }

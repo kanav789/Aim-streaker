@@ -14,10 +14,13 @@ interface RunningHudProps {
   isSignalLost: boolean;
   isNearStartPoint: boolean;
   hasEnoughPoints: boolean;
+  runnerName?: string;
+  worldTerritoryCount?: number;
   onStartRun: () => void;
   onFinishRun: () => void;
   onRequestGps: () => void;
   onOpenGpsHelp: () => void;
+  onOpenWorldFeed?: () => void;
   onTriggerDevSimulation?: () => void;
 }
 
@@ -33,10 +36,13 @@ export function RunningHud({
   isSignalLost,
   isNearStartPoint,
   hasEnoughPoints,
+  runnerName,
+  worldTerritoryCount = 0,
   onStartRun,
   onFinishRun,
   onRequestGps,
   onOpenGpsHelp,
+  onOpenWorldFeed,
   onTriggerDevSimulation,
 }: RunningHudProps) {
   const isDev = process.env.NODE_ENV === "development";
@@ -91,10 +97,24 @@ export function RunningHud({
           </span>
         </div>
 
-        {/* Right: Permanent Territory Pill */}
-        <div className="pointer-events-auto flex items-center gap-1.5 rounded-2xl bg-zinc-950/80 backdrop-blur-md border border-zinc-800 px-3 py-2 text-xs font-bold text-white shadow-lg">
-          <span className="text-accent text-sm">🏴</span>
-          <span className="font-mono">{formatArea(totalCumulativeAreaMeters)}</span>
+        {/* Right: World Feed button & Permanent Territory Pill */}
+        <div className="flex items-center gap-2 pointer-events-auto">
+          {onOpenWorldFeed && (
+            <button
+              onClick={onOpenWorldFeed}
+              className="flex items-center gap-1.5 rounded-2xl bg-zinc-950/80 backdrop-blur-md border border-zinc-800 px-3 py-2 text-xs font-bold text-sky-400 shadow-lg hover:border-sky-500/50 hover:bg-sky-950/30 active:scale-95 transition"
+              title="Open World Streakers Feed"
+            >
+              <span>🌍</span>
+              <span className="hidden sm:inline">World</span>
+              <span>Feed ({worldTerritoryCount})</span>
+            </button>
+          )}
+
+          <div className="flex items-center gap-1.5 rounded-2xl bg-zinc-950/80 backdrop-blur-md border border-zinc-800 px-3 py-2 text-xs font-bold text-white shadow-lg">
+            <span className="text-accent text-sm">🏴</span>
+            <span className="font-mono">{formatArea(totalCumulativeAreaMeters)}</span>
+          </div>
         </div>
       </div>
 
@@ -104,14 +124,18 @@ export function RunningHud({
           {!isRunning ? (
             /* Idle Pre-Run State */
             <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
                   <h3 className="text-sm font-extrabold text-white tracking-tight flex items-center gap-1.5">
                     Ready to Run ⚡
                   </h3>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Close an enclosed loop to capture new territory.
+                    Run anywhere or close a loop — all runs claim territory with your name.
                   </p>
+                </div>
+                <div className="shrink-0 px-2.5 py-1 rounded-xl bg-zinc-900 border border-zinc-800 text-[11px] font-bold text-accent flex items-center gap-1 max-w-[120px]">
+                  <span>👑</span>
+                  <span className="truncate">{runnerName || "You"}</span>
                 </div>
               </div>
 

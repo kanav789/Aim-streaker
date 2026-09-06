@@ -2,38 +2,47 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
+import * as turf from "@turf/turf";
 import type { Feature, FeatureCollection, Geometry, LineString, Polygon, MultiPolygon } from "geojson";
 import { Territory } from "@/service/running";
-import { formatArea } from "@/service/running";
+import { formatArea, formatDistance } from "@/service/running";
 
 interface MapViewProps {
   userLocation: { latitude: number; longitude: number } | null;
   liveRouteCoordinates: [number, number][]; // [lng, lat][]
   worldTerritories: Territory[];
   currentUserId: string;
+  focusCoordinates?: [number, number] | null;
+  focusBounds?: [number, number, number, number] | null;
+  liveDistanceMeters?: number;
+  liveAreaMeters?: number;
   onMapLoaded?: () => void;
 }
 
-// Direct, high-speed inline OpenStreetMap style that loads immediately with 0 external style dependencies
-const OPENSTREETMAP_STYLE: maplibregl.StyleSpecification = {
+// Ultra-clean native Dark Matter tile style for vibrant tactical WebGL rendering
+const CARTO_DARK_STYLE: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
-    "osm-tiles": {
+    "carto-dark": {
       type: "raster",
       tiles: [
-        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+        "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+        "https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
       ],
       tileSize: 256,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
     },
   },
   layers: [
     {
-      id: "osm-tiles-layer",
+      id: "carto-dark-layer",
       type: "raster",
-      source: "osm-tiles",
+      source: "carto-dark",
       minzoom: 0,
-      maxzoom: 19,
+      maxzoom: 20,
     },
   ],
 };
@@ -43,11 +52,16 @@ export function MapView({
   liveRouteCoordinates,
   worldTerritories,
   currentUserId,
+  focusCoordinates,
+  focusBounds,
+  liveDistanceMeters = 0,
+  liveAreaMeters = 0,
   onMapLoaded,
 }: MapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const territoryMarkersRef = useRef<maplibregl.Marker[]>([]);
   const [isMapReady, setIsMapReady] = useState(false);
 
   // Projected screen coordinates for the live route and covered area
@@ -59,11 +73,11 @@ export function MapView({
 
     const initialLng = userLocation ? userLocation.longitude : 0;
     const initialLat = userLocation ? userLocation.latitude : 20;
-    const initialZoom = userLocation ? 16 : 2;
+    const initialZoom = userLocation ? 16.5 : 2;
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: OPENSTREETMAP_STYLE,
+      style: CARTO_DARK_STYLE,
       center: [initialLng, initialLat],
       zoom: initialZoom,
       pitch: 0,
@@ -80,37 +94,7 @@ export function MapView({
       setIsMapReady(true);
       if (onMapLoaded) onMapLoaded();
 
-      // 1. Live Route WebGL Layer (backup layer)
-      map.addSource("live-route-source", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-
-      map.addLayer({
-        id: "live-route-line-casing",
-        type: "line",
-        source: "live-route-source",
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: {
-          "line-color": "#000000",
-          "line-width": 8,
-          "line-opacity": 0.5,
-        },
-      });
-
-      map.addLayer({
-        id: "live-route-line",
-        type: "line",
-        source: "live-route-source",
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: {
-          "line-color": "#a3ff12",
-          "line-width": 5,
-          "line-opacity": 0.95,
-        },
-      });
-
-      // 2. Other Users' Territories Source & Layers (Cyan / Electric Blue)
+      // 1. Other Users' Territories Source & Layers (Cyan / Electric Blue)
       map.addSource("other-territories-source", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -132,12 +116,12 @@ export function MapView({
         source: "other-territories-source",
         paint: {
           "line-color": "#00e5ff",
-          "line-width": 2.5,
-          "line-opacity": 0.9,
+          "line-width": 3,
+          "line-opacity": 0.95,
         },
       });
 
-      // 3. My Territories Source & Layers (Neon Green)
+      // 2. My Territories Source & Layers (Neon Green)
       map.addSource("my-territories-source", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -164,6 +148,96 @@ export function MapView({
         },
       });
 
+      // 3. Other Users' Running Route Tracks (Electric Cyan with Dark Casing)
+      map.addSource("other-routes-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+
+      map.addLayer({
+        id: "other-routes-casing",
+        type: "line",
+        source: "other-routes-source",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#000000",
+          "line-width": 9,
+          "line-opacity": 0.85,
+        },
+      });
+
+      map.addLayer({
+        id: "other-routes-line",
+        type: "line",
+        source: "other-routes-source",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#00e5ff",
+          "line-width": 5.5,
+          "line-opacity": 1.0,
+        },
+      });
+
+      // 4. My Running Route Tracks (Neon Lime with Dark Casing)
+      map.addSource("my-routes-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+
+      map.addLayer({
+        id: "my-routes-casing",
+        type: "line",
+        source: "my-routes-source",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#000000",
+          "line-width": 9.5,
+          "line-opacity": 0.85,
+        },
+      });
+
+      map.addLayer({
+        id: "my-routes-line",
+        type: "line",
+        source: "my-routes-source",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#a3ff12",
+          "line-width": 6,
+          "line-opacity": 1.0,
+        },
+      });
+
+      // 5. Live Route WebGL Layer (Highest WebGL priority)
+      map.addSource("live-route-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+
+      map.addLayer({
+        id: "live-route-line-casing",
+        type: "line",
+        source: "live-route-source",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#000000",
+          "line-width": 9.5,
+          "line-opacity": 0.85,
+        },
+      });
+
+      map.addLayer({
+        id: "live-route-line",
+        type: "line",
+        source: "live-route-source",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#a3ff12",
+          "line-width": 6,
+          "line-opacity": 1.0,
+        },
+      });
+
       // Territory Tap / Click Popup
       const setupPopupHandler = (layerId: string, isSelf: boolean) => {
         map.on("click", layerId, (e: maplibregl.MapLayerMouseEvent) => {
@@ -172,23 +246,26 @@ export function MapView({
           if (!props) return;
 
           const coordinates = e.lngLat;
-          const ownerName = props.userName || (isSelf ? "You" : "Unknown Streaker");
+          const ownerName = props.userName || (isSelf ? "You" : "Runner");
           const area = Number(props.areaSquareMeters || 0);
+          const distance = Number(props.distanceMeters || 0);
           const createdAt = props.createdAt
             ? new Date(props.createdAt).toLocaleDateString()
             : "";
 
-          new maplibregl.Popup({ offset: 15, className: "aim-map-popup" })
+          new maplibregl.Popup({ offset: 15, className: isSelf ? "aim-map-popup self-popup" : "aim-map-popup" })
             .setLngLat(coordinates)
             .setHTML(
-              `<div style="color: #000; font-family: sans-serif; padding: 4px;">
-                <div style="font-weight: 800; font-size: 13px; color: ${isSelf ? "#10b981" : "#0284c7"}">
-                  ${isSelf ? "🏴 Your Territory" : `👤 ${ownerName}`}
+              `<div style="font-family: inherit; padding: 2px 0;">
+                <div style="font-weight: 900; font-size: 13px; color: ${isSelf ? "#a3ff12" : "#00e5ff"}; display: flex; align-items: center; gap: 6px; letter-spacing: -0.01em;">
+                  <span>${isSelf ? "👑" : "👤"}</span>
+                  <span>${isSelf ? "Your Territory (" + ownerName + ")" : ownerName}</span>
                 </div>
-                <div style="font-size: 11px; margin-top: 2px; color: #4b5563;">
-                  Area: <strong>${formatArea(area)}</strong>
+                ${distance > 0 ? `<div style="font-size: 11px; margin-top: 6px; color: #e4e4e7; font-weight: 700; display: flex; align-items: center; gap: 4px;"><span>🏃</span><span>Run Route:</span><span style="color: #ffffff; font-weight: 800;">${formatDistance(distance)}</span></div>` : ""}
+                <div style="font-size: 11px; margin-top: 3px; color: #a1a1aa; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                  <span>🏴</span><span>Area Covered:</span><span style="color: #ffffff; font-weight: 800;">${formatArea(area)}</span>
                 </div>
-                ${createdAt ? `<div style="font-size: 9px; color: #9ca3af; margin-top: 2px;">Claimed: ${createdAt}</div>` : ""}
+                ${createdAt ? `<div style="font-size: 10px; color: #71717a; margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">Claimed: ${createdAt}</div>` : ""}
               </div>`
             )
             .addTo(map);
@@ -204,6 +281,8 @@ export function MapView({
 
       setupPopupHandler("my-territories-fill", true);
       setupPopupHandler("other-territories-fill", false);
+      setupPopupHandler("my-routes-line", true);
+      setupPopupHandler("other-routes-line", false);
     });
 
     const handleResize = () => {
@@ -215,6 +294,8 @@ export function MapView({
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      territoryMarkersRef.current.forEach((m) => m.remove());
+      territoryMarkersRef.current = [];
       map.remove();
       mapRef.current = null;
       setIsMapReady(false);
@@ -311,17 +392,55 @@ export function MapView({
     }
   }, [liveRouteCoordinates, isMapReady]);
 
-  // Update World Territories on Map
+  // Update World Territories on Map & Render Territory Name Badges
   useEffect(() => {
     if (!mapRef.current || !isMapReady) return;
 
+    // Clear previous territory markers
+    territoryMarkersRef.current.forEach((m) => m.remove());
+    territoryMarkersRef.current = [];
+
     const myFeatures: Feature<Geometry>[] = [];
     const otherFeatures: Feature<Geometry>[] = [];
+    const myRouteFeatures: Feature<Geometry>[] = [];
+    const otherRouteFeatures: Feature<Geometry>[] = [];
 
     for (const territory of worldTerritories) {
       try {
-        const parsed = JSON.parse(territory.polygonGeoJSON);
-        const geom = parsed.geometry ? parsed.geometry : parsed;
+        let parsed = JSON.parse(territory.polygonGeoJSON);
+        let geom: any = null;
+
+        if (parsed.type === "FeatureCollection") {
+          if (parsed.features && parsed.features.length > 0) {
+            const validFeatures = parsed.features.filter(
+              (f: any) => f.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon")
+            );
+            if (validFeatures.length === 1) {
+              geom = validFeatures[0].geometry;
+            } else if (validFeatures.length > 1) {
+              const allCoords: any[] = [];
+              for (const vf of validFeatures) {
+                if (vf.geometry.type === "Polygon") {
+                  allCoords.push(vf.geometry.coordinates);
+                } else if (vf.geometry.type === "MultiPolygon") {
+                  allCoords.push(...vf.geometry.coordinates);
+                }
+              }
+              geom = { type: "MultiPolygon", coordinates: allCoords };
+            } else if (parsed.features[0]?.geometry) {
+              geom = parsed.features[0].geometry;
+            }
+          }
+        } else if (parsed.type === "Feature") {
+          geom = parsed.geometry;
+        } else if (parsed.type === "Polygon" || parsed.type === "MultiPolygon") {
+          geom = parsed;
+        } else if (parsed.geometry) {
+          geom = parsed.geometry;
+        }
+
+        if (!geom) continue;
+
         const feature: Feature<Polygon | MultiPolygon> = {
           type: "Feature",
           properties: {
@@ -329,6 +448,7 @@ export function MapView({
             userId: territory.userId,
             userName: territory.userName,
             areaSquareMeters: territory.areaSquareMeters,
+            distanceMeters: territory.distanceMeters,
             createdAt: territory.createdAt,
           },
           geometry: geom,
@@ -339,6 +459,149 @@ export function MapView({
         } else {
           otherFeatures.push(feature);
         }
+
+        // Extract running route track (line)
+        let routeCoords: [number, number][] = [];
+        if (territory.routeGeoJSON) {
+          try {
+            const parsedRoute = JSON.parse(territory.routeGeoJSON);
+            if (Array.isArray(parsedRoute)) {
+              if (parsedRoute.length > 0 && typeof parsedRoute[0] === "object" && !Array.isArray(parsedRoute[0])) {
+                routeCoords = parsedRoute.map((p: any) => [
+                  Number(p.longitude ?? p.lng ?? p[0]),
+                  Number(p.latitude ?? p.lat ?? p[1]),
+                ]);
+              } else {
+                routeCoords = parsedRoute;
+              }
+            } else if (parsedRoute && parsedRoute.type === "LineString" && Array.isArray(parsedRoute.coordinates)) {
+              routeCoords = parsedRoute.coordinates;
+            } else if (parsedRoute && parsedRoute.type === "Feature" && parsedRoute.geometry?.coordinates) {
+              routeCoords = parsedRoute.geometry.coordinates;
+            }
+          } catch (e) {
+            console.warn("Could not parse routeGeoJSON for territory:", territory.id, e);
+          }
+        }
+        // Fallback: If routeCoords empty or insufficient, extract perimeter from polygon/multipolygon geometry
+        if (routeCoords.length < 2 && geom) {
+          if (geom.type === "Polygon" && Array.isArray(geom.coordinates?.[0])) {
+            routeCoords = geom.coordinates[0] as [number, number][];
+          } else if (geom.type === "MultiPolygon" && Array.isArray(geom.coordinates?.[0]?.[0])) {
+            routeCoords = geom.coordinates[0][0] as [number, number][];
+          } else if (geom.type === "LineString" && Array.isArray(geom.coordinates)) {
+            routeCoords = geom.coordinates as [number, number][];
+          }
+        }
+
+        if (routeCoords.length >= 2) {
+          const lineFeature: Feature<LineString> = {
+            type: "Feature",
+            properties: {
+              id: territory.id,
+              userId: territory.userId,
+              userName: territory.userName,
+              areaSquareMeters: territory.areaSquareMeters,
+              distanceMeters: territory.distanceMeters,
+              createdAt: territory.createdAt,
+            },
+            geometry: {
+              type: "LineString",
+              coordinates: routeCoords,
+            },
+          };
+
+          if (territory.userId === currentUserId) {
+            myRouteFeatures.push(lineFeature);
+          } else {
+            otherRouteFeatures.push(lineFeature);
+          }
+        }
+
+        // Calculate centroid for visible name & distance & area badge on tactical map
+        const centroid = turf.centroid(geom);
+        const [cLng, cLat] = centroid.geometry.coordinates;
+
+        const isSelf = territory.userId === currentUserId;
+        const ownerName = territory.userName || (isSelf ? "You" : "Runner");
+        const areaText = formatArea(territory.areaSquareMeters || 0);
+        const distText = territory.distanceMeters ? formatDistance(territory.distanceMeters) : null;
+
+        const badge = document.createElement("div");
+        badge.className = "aim-territory-badge";
+        badge.style.cursor = "pointer";
+        badge.style.display = "inline-flex";
+        badge.style.alignItems = "center";
+        badge.style.gap = "4px";
+        badge.style.padding = "3px 8px";
+        badge.style.borderRadius = "9999px";
+        badge.style.fontSize = "10px";
+        badge.style.fontWeight = "800";
+        badge.style.whiteSpace = "nowrap";
+        badge.style.userSelect = "none";
+        badge.style.transition = "transform 0.15s ease, box-shadow 0.15s ease";
+
+        const badgeDetail = distText
+          ? `• 🏃 ${distText} • 🏴 ${areaText}`
+          : `• 🏴 ${areaText}`;
+
+        if (isSelf) {
+          badge.style.background = "rgba(0, 0, 0, 0.88)";
+          badge.style.border = "1.5px solid #a3ff12";
+          badge.style.color = "#a3ff12";
+          badge.style.boxShadow = "0 0 12px rgba(163, 255, 18, 0.4)";
+          badge.innerHTML = `<span>👑</span><span>You (${ownerName})</span><span style="opacity:0.75;font-weight:600;font-size:9px;">${badgeDetail}</span>`;
+        } else {
+          badge.style.background = "rgba(0, 0, 0, 0.88)";
+          badge.style.border = "1.5px solid #00e5ff";
+          badge.style.color = "#00e5ff";
+          badge.style.boxShadow = "0 0 12px rgba(0, 229, 255, 0.4)";
+          badge.innerHTML = `<span>👤</span><span>${ownerName}</span><span style="opacity:0.75;font-weight:600;font-size:9px;">${badgeDetail}</span>`;
+        }
+
+        badge.onmouseenter = () => {
+          badge.style.transform = "scale(1.08)";
+        };
+        badge.onmouseleave = () => {
+          badge.style.transform = "scale(1)";
+        };
+
+        badge.onclick = (e) => {
+          e.stopPropagation();
+          if (!mapRef.current) return;
+
+          // Smoothly zoom into street-level (zoom 17) to reveal the route track and area shape
+          mapRef.current.flyTo({
+            center: [cLng, cLat],
+            zoom: 17,
+            pitch: 20,
+            essential: true,
+            duration: 900,
+          });
+
+          new maplibregl.Popup({ offset: 15, className: isSelf ? "aim-map-popup self-popup" : "aim-map-popup" })
+            .setLngLat([cLng, cLat])
+            .setHTML(`
+              <div style="font-family: inherit; padding: 2px 0;">
+                <div style="font-weight: 900; font-size: 13px; color: ${isSelf ? "#a3ff12" : "#00e5ff"}; display: flex; align-items: center; gap: 6px; letter-spacing: -0.01em;">
+                  <span>${isSelf ? "👑" : "👤"}</span>
+                  <span>${isSelf ? "Your Territory (" + ownerName + ")" : ownerName}</span>
+                </div>
+                ${distText ? `<div style="font-size: 11px; margin-top: 6px; color: #e4e4e7; font-weight: 700; display: flex; align-items: center; gap: 4px;"><span>🏃</span><span>Run Route:</span><span style="color: #ffffff; font-weight: 800;">${distText}</span></div>` : ""}
+                <div style="font-size: 11px; margin-top: 3px; color: #a1a1aa; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                  <span>🏴</span><span>Area Covered:</span><span style="color: #ffffff; font-weight: 800;">${areaText}</span>
+                </div>
+                ${territory.createdAt ? `<div style="font-size: 10px; color: #71717a; margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">Claimed: ${new Date(territory.createdAt).toLocaleDateString()}</div>` : ""}
+              </div>
+            `)
+            .addTo(mapRef.current);
+        };
+
+        const marker = new maplibregl.Marker({ element: badge, anchor: "center" })
+          .setLngLat([cLng, cLat])
+          .addTo(mapRef.current);
+
+        territoryMarkersRef.current.push(marker);
       } catch (err) {
         console.error("Failed to parse territory polygon:", err);
       }
@@ -359,7 +622,50 @@ export function MapView({
         features: otherFeatures,
       } as FeatureCollection);
     }
+
+    const myRoutesSource = mapRef.current.getSource("my-routes-source") as maplibregl.GeoJSONSource;
+    if (myRoutesSource) {
+      myRoutesSource.setData({
+        type: "FeatureCollection",
+        features: myRouteFeatures,
+      } as FeatureCollection);
+    }
+
+    const otherRoutesSource = mapRef.current.getSource("other-routes-source") as maplibregl.GeoJSONSource;
+    if (otherRoutesSource) {
+      otherRoutesSource.setData({
+        type: "FeatureCollection",
+        features: otherRouteFeatures,
+      } as FeatureCollection);
+    }
   }, [worldTerritories, currentUserId, isMapReady]);
+
+  // Smoothly fly to territory when chosen in the World Feed at street level
+  useEffect(() => {
+    if (!mapRef.current || !isMapReady) return;
+    if (focusCoordinates) {
+      mapRef.current.flyTo({
+        center: focusCoordinates,
+        zoom: 17,
+        pitch: 20,
+        essential: true,
+        duration: 1200,
+      });
+    } else if (focusBounds) {
+      mapRef.current.fitBounds(
+        [
+          [focusBounds[0], focusBounds[1]],
+          [focusBounds[2], focusBounds[3]],
+        ],
+        {
+          padding: { top: 120, bottom: 200, left: 60, right: 60 },
+          minZoom: 16,
+          maxZoom: 18,
+          duration: 1200,
+        }
+      );
+    }
+  }, [focusCoordinates, focusBounds, isMapReady]);
 
   // Recenter helper
   const handleRecenter = () => {
@@ -439,8 +745,59 @@ export function MapView({
               </text>
             </g>
           )}
+
+          {/* Current Runner Head Pin & Live Area Covered Badge on the Line */}
+          {projectedRoutePoints.length >= 2 && (() => {
+            const currentPt = projectedRoutePoints[projectedRoutePoints.length - 1];
+            return (
+              <g transform={`translate(${Math.round(currentPt.x)}, ${Math.round(currentPt.y)})`}>
+                <circle r="12" fill="#a3ff12" fillOpacity="0.4" className="animate-ping" />
+                <circle r="6" fill="#ffffff" stroke="#a3ff12" strokeWidth="3" />
+                <g transform="translate(0, -22)">
+                  <rect
+                    x="-75"
+                    y="-13"
+                    width="150"
+                    height="24"
+                    rx="12"
+                    fill="rgba(0, 0, 0, 0.9)"
+                    stroke="#a3ff12"
+                    strokeWidth="1.5"
+                    style={{ filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.8))" }}
+                  />
+                  <text
+                    x="0"
+                    y="3"
+                    textAnchor="middle"
+                    fill="#a3ff12"
+                    fontSize="10"
+                    fontWeight="900"
+                  >
+                    {`🏃 ${formatDistance(liveDistanceMeters)} • 🏴 ${formatArea(liveAreaMeters)}`}
+                  </text>
+                </g>
+              </g>
+            );
+          })()}
         </svg>
       )}
+
+      {/* Tactical Map Route & Area Legend */}
+      <div className="absolute left-4 top-[72px] z-20 hidden sm:flex flex-col gap-1.5 p-2 rounded-xl bg-zinc-950/85 backdrop-blur-md border border-zinc-800 text-[10px] font-mono shadow-xl pointer-events-none select-none">
+        <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-400">
+          Tactical Map Overlay
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3.5 h-1 rounded bg-[#a3ff12] shadow-[0_0_6px_#a3ff12]"></span>
+          <span className="w-2.5 h-2.5 rounded-sm bg-[#a3ff12]/30 border border-[#a3ff12]"></span>
+          <span className="text-zinc-200 font-medium">Your Route &amp; Territory</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3.5 h-1 rounded bg-[#00e5ff] shadow-[0_0_6px_#00e5ff]"></span>
+          <span className="w-2.5 h-2.5 rounded-sm bg-[#00e5ff]/30 border border-[#00e5ff]"></span>
+          <span className="text-zinc-200 font-medium">Other Runners' Route &amp; Territory</span>
+        </div>
+      </div>
 
       {/* Recenter Button */}
       {userLocation && isMapReady && (
