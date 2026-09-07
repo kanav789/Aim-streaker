@@ -19,7 +19,7 @@ interface MapViewProps {
   onMapLoaded?: () => void;
 }
 
-// Robust, high-performance dark tactical style with full street details and ZERO watermarks/API keys
+// High-contrast, pitch-black tactical dark mode style with ZERO watermarks, NO API key required, and 100% reliable raster loading
 const TACTICAL_DARK_STYLE: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
@@ -43,11 +43,23 @@ const TACTICAL_DARK_STYLE: maplibregl.StyleSpecification = {
   },
   layers: [
     {
+      id: "dark-background",
+      type: "background",
+      paint: {
+        "background-color": "#080a0e",
+      },
+    },
+    {
       id: "esri-dark-base-layer",
       type: "raster",
       source: "esri-dark-base",
       minzoom: 0,
       maxzoom: 22,
+      paint: {
+        "raster-brightness-max": 0.4, // Deepens the gray into midnight pitch black
+        "raster-contrast": 0.35,       // High contrast roads and street grids
+        "raster-saturation": -1.0,     // Eliminates brownish tints for pure dark mode
+      },
     },
     {
       id: "esri-dark-ref-layer",
@@ -55,6 +67,10 @@ const TACTICAL_DARK_STYLE: maplibregl.StyleSpecification = {
       source: "esri-dark-ref",
       minzoom: 0,
       maxzoom: 22,
+      paint: {
+        "raster-contrast": 0.4,        // Crisp street names and landmarks
+        "raster-brightness-min": 0.15, // Clear, legible labels
+      },
     },
   ],
 };
