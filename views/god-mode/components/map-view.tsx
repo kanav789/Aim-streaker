@@ -19,7 +19,7 @@ interface MapViewProps {
   onMapLoaded?: () => void;
 }
 
-// Robust, high-performance dark tactical style with full street details and ZERO watermarks/API keys
+// High-contrast, pitch-black tactical dark mode style with ZERO watermarks, NO API key required, and 100% reliable raster loading
 const TACTICAL_DARK_STYLE: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
@@ -43,11 +43,23 @@ const TACTICAL_DARK_STYLE: maplibregl.StyleSpecification = {
   },
   layers: [
     {
+      id: "dark-background",
+      type: "background",
+      paint: {
+        "background-color": "#080a0e",
+      },
+    },
+    {
       id: "esri-dark-base-layer",
       type: "raster",
       source: "esri-dark-base",
       minzoom: 0,
       maxzoom: 22,
+      paint: {
+        "raster-brightness-max": 0.4, // Deepens the gray into midnight pitch black
+        "raster-contrast": 0.35,       // High contrast roads and street grids
+        "raster-saturation": -1.0,     // Eliminates brownish tints for pure dark mode
+      },
     },
     {
       id: "esri-dark-ref-layer",
@@ -55,9 +67,22 @@ const TACTICAL_DARK_STYLE: maplibregl.StyleSpecification = {
       source: "esri-dark-ref",
       minzoom: 0,
       maxzoom: 22,
+      paint: {
+        "raster-contrast": 0.4,        // Crisp street names and landmarks
+        "raster-brightness-min": 0.15, // Clear, legible labels
+      },
     },
   ],
 };
+
+export interface ProjectedTerritory {
+  id: string;
+  userName: string;
+  isSelf: boolean;
+  area: number;
+  center: { x: number; y: number };
+  rings: { x: number; y: number }[][];
+}
 
 export function MapView({
   userLocation,
@@ -79,15 +104,17 @@ export function MapView({
 
   // Projected screen coordinates for the live route and covered area
   const [projectedRoutePoints, setProjectedRoutePoints] = useState<{ x: number; y: number }[]>([]);
+  // Projected screen polygons for ALL world territories & manual showcase shapes
+  const [projectedTerritories, setProjectedTerritories] = useState<ProjectedTerritory[]>([]);
 
   // Initialize MapLibre GL
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    // Prioritize captured territory, then user location, then Thaltej (Aster Hospital)
-    let initialLng = 72.5123;
-    let initialLat = 23.0495;
-    let initialZoom = 16.5;
+    // Prioritize captured territory, then user location, then Thaltej/Ahmedabad
+    let initialLng = 72.5120;
+    let initialLat = 23.0300;
+    let initialZoom = 12.8;
 
     if (worldTerritories && worldTerritories.length > 0) {
       try {
@@ -97,6 +124,7 @@ export function MapView({
         const c = turf.centroid(geom);
         initialLng = c.geometry.coordinates[0];
         initialLat = c.geometry.coordinates[1];
+        initialZoom = 12.8;
       } catch (e) {
         // fallback
       }
@@ -383,6 +411,9 @@ export function MapView({
     window.addEventListener("resize", handleResize);
 
     mapRef.current = map;
+    if (typeof window !== "undefined") {
+      (window as any).__aimMap = map;
+    }
 
     return () => {
       window.removeEventListener("resize", handleResize);
@@ -394,33 +425,136 @@ export function MapView({
     };
   }, []);
 
-  // Synchronize SVG projected points on route change and map movement
+  // Synchronize SVG projected territory shapes and live route points on map movement & zoom
   useEffect(() => {
     if (!mapRef.current || !isMapReady) return;
 
     const map = mapRef.current;
 
-    const updateProjectedPoints = () => {
+    const updateAllProjected = () => {
+      // 1. Live route points
       if (liveRouteCoordinates.length === 0) {
         setProjectedRoutePoints([]);
-        return;
+      } else {
+        const points = liveRouteCoordinates.map((coord) => map.project(coord));
+        setProjectedRoutePoints(points);
       }
-      const points = liveRouteCoordinates.map((coord) => map.project(coord));
-      setProjectedRoutePoints(points);
+
+      // 2. Projected Territory Polygons
+      const list: ProjectedTerritory[] = [];
+
+      for (const territory of worldTerritories) {
+        try {
+          let parsed: any = null;
+          try {
+            parsed = typeof territory.polygonGeoJSON === "string"
+              ? JSON.parse(territory.polygonGeoJSON)
+              : territory.polygonGeoJSON;
+          } catch {
+            parsed = null;
+          }
+
+          let geom: any = null;
+          if (parsed) {
+            if (parsed.type === "FeatureCollection" && parsed.features?.[0]?.geometry) {
+              geom = parsed.features[0].geometry;
+            } else if (parsed.type === "Feature" && parsed.geometry) {
+              geom = parsed.geometry;
+            } else if (parsed.type === "Polygon" || parsed.type === "MultiPolygon") {
+              geom = parsed;
+            } else if (parsed.geometry) {
+              geom = parsed.geometry;
+            }
+          }
+
+          // Route fallback
+          let routeCoords: [number, number][] = [];
+          if (territory.routeGeoJSON) {
+            try {
+              const r = typeof territory.routeGeoJSON === "string"
+                ? JSON.parse(territory.routeGeoJSON)
+                : territory.routeGeoJSON;
+              if (Array.isArray(r)) {
+                routeCoords = r.map((p: any) =>
+                  Array.isArray(p) ? [p[0], p[1]] : [p.longitude ?? p.lng, p.latitude ?? p.lat]
+                );
+              } else if (r?.coordinates) {
+                routeCoords = r.coordinates;
+              }
+            } catch {}
+          }
+
+          if (
+            !geom ||
+            (geom.type === "Polygon" && (!geom.coordinates || geom.coordinates[0]?.length < 3))
+          ) {
+            if (routeCoords.length >= 3) {
+              const startPt = routeCoords[0];
+              const endPt = routeCoords[routeCoords.length - 1];
+              const distKm = turf.distance(startPt, endPt);
+              if (distKm <= 0.25) {
+                geom = turf.polygon([[...routeCoords, routeCoords[0]]]).geometry;
+              } else {
+                geom = turf.buffer(turf.lineString(routeCoords), 0.04, { units: "kilometers" })?.geometry;
+              }
+            } else if (routeCoords.length >= 2) {
+              geom = turf.buffer(turf.lineString(routeCoords), 0.04, { units: "kilometers" })?.geometry;
+            } else if (routeCoords.length === 1) {
+              geom = turf.buffer(turf.point(routeCoords[0]), 0.06, { units: "kilometers" })?.geometry;
+            }
+          }
+
+          if (!geom) continue;
+
+          let rawRings: [number, number][][] = [];
+          if (geom.type === "Polygon") {
+            rawRings = geom.coordinates;
+          } else if (geom.type === "MultiPolygon") {
+            rawRings = geom.coordinates.flat(1);
+          }
+
+          if (rawRings.length === 0) continue;
+
+          const projectedRings: { x: number; y: number }[][] = rawRings.map((ring) =>
+            ring.map((coord) => map.project(coord))
+          );
+
+          const mainRing = projectedRings[0] || [];
+          let cx = 0;
+          let cy = 0;
+          if (mainRing.length > 0) {
+            cx = Math.round(mainRing.reduce((sum, p) => sum + p.x, 0) / mainRing.length);
+            cy = Math.round(mainRing.reduce((sum, p) => sum + p.y, 0) / mainRing.length);
+          }
+
+          list.push({
+            id: territory.id || `territory_${Math.random()}`,
+            userName: territory.userName || "Runner",
+            isSelf: territory.userId === currentUserId,
+            area: territory.areaSquareMeters || 0,
+            center: { x: cx, y: cy },
+            rings: projectedRings,
+          });
+        } catch (err) {
+          console.warn("Failed to project territory polygon:", territory.id, err);
+        }
+      }
+
+      setProjectedTerritories(list);
     };
 
-    updateProjectedPoints();
+    updateAllProjected();
 
-    map.on("move", updateProjectedPoints);
-    map.on("zoom", updateProjectedPoints);
-    map.on("rotate", updateProjectedPoints);
+    map.on("move", updateAllProjected);
+    map.on("zoom", updateAllProjected);
+    map.on("rotate", updateAllProjected);
 
     return () => {
-      map.off("move", updateProjectedPoints);
-      map.off("zoom", updateProjectedPoints);
-      map.off("rotate", updateProjectedPoints);
+      map.off("move", updateAllProjected);
+      map.off("zoom", updateAllProjected);
+      map.off("rotate", updateAllProjected);
     };
-  }, [liveRouteCoordinates, isMapReady]);
+  }, [liveRouteCoordinates, worldTerritories, currentUserId, isMapReady]);
 
   // Update User Marker & Center
   useEffect(() => {
@@ -502,36 +636,127 @@ export function MapView({
 
     for (const territory of worldTerritories) {
       try {
-        let parsed = JSON.parse(territory.polygonGeoJSON);
-        let geom: any = null;
+        let parsed: any = null;
+        try {
+          parsed = JSON.parse(territory.polygonGeoJSON);
+        } catch {
+          parsed = null;
+        }
 
-        if (parsed.type === "FeatureCollection") {
-          if (parsed.features && parsed.features.length > 0) {
-            const validFeatures = parsed.features.filter(
-              (f: any) => f.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon")
-            );
-            if (validFeatures.length === 1) {
-              geom = validFeatures[0].geometry;
-            } else if (validFeatures.length > 1) {
-              const allCoords: any[] = [];
-              for (const vf of validFeatures) {
-                if (vf.geometry.type === "Polygon") {
-                  allCoords.push(vf.geometry.coordinates);
-                } else if (vf.geometry.type === "MultiPolygon") {
-                  allCoords.push(...vf.geometry.coordinates);
+        let geom: any = null;
+        if (parsed) {
+          if (parsed.type === "FeatureCollection") {
+            if (parsed.features && parsed.features.length > 0) {
+              const validFeatures = parsed.features.filter(
+                (f: any) => f.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon")
+              );
+              if (validFeatures.length === 1) {
+                geom = validFeatures[0].geometry;
+              } else if (validFeatures.length > 1) {
+                const allCoords: any[] = [];
+                for (const vf of validFeatures) {
+                  if (vf.geometry.type === "Polygon") {
+                    allCoords.push(vf.geometry.coordinates);
+                  } else if (vf.geometry.type === "MultiPolygon") {
+                    allCoords.push(...vf.geometry.coordinates);
+                  }
                 }
+                geom = { type: "MultiPolygon", coordinates: allCoords };
+              } else if (parsed.features[0]?.geometry) {
+                geom = parsed.features[0].geometry;
               }
-              geom = { type: "MultiPolygon", coordinates: allCoords };
-            } else if (parsed.features[0]?.geometry) {
-              geom = parsed.features[0].geometry;
+            }
+          } else if (parsed.type === "Feature") {
+            geom = parsed.geometry;
+          } else if (parsed.type === "Polygon" || parsed.type === "MultiPolygon") {
+            geom = parsed;
+          } else if (parsed.geometry) {
+            geom = parsed.geometry;
+          }
+        }
+
+        // 1. Extract running route track (line)
+        let routeCoords: [number, number][] = [];
+        if (territory.routeGeoJSON) {
+          try {
+            const parsedRoute = JSON.parse(territory.routeGeoJSON);
+            if (Array.isArray(parsedRoute)) {
+              if (parsedRoute.length > 0 && typeof parsedRoute[0] === "object" && !Array.isArray(parsedRoute[0])) {
+                routeCoords = parsedRoute.map((p: any) => [
+                  Number(p.longitude ?? p.lng ?? p[0]),
+                  Number(p.latitude ?? p.lat ?? p[1]),
+                ]);
+              } else {
+                routeCoords = parsedRoute;
+              }
+            } else if (parsedRoute && parsedRoute.type === "LineString" && Array.isArray(parsedRoute.coordinates)) {
+              routeCoords = parsedRoute.coordinates;
+            } else if (parsedRoute && parsedRoute.type === "Feature" && parsedRoute.geometry?.coordinates) {
+              routeCoords = parsedRoute.geometry.coordinates;
+            }
+          } catch (e) {
+            console.warn("Could not parse routeGeoJSON for territory:", territory.id, e);
+          }
+        }
+
+        // 2. Identify start/anchor coordinate for START beacon & runner name badge
+        let pinLng = 72.5123;
+        let pinLat = 23.0495;
+        if (routeCoords.length >= 1) {
+          pinLng = routeCoords[0][0];
+          pinLat = routeCoords[0][1];
+        } else if (geom) {
+          try {
+            const c = turf.centroid(geom);
+            pinLng = c.geometry.coordinates[0];
+            pinLat = c.geometry.coordinates[1];
+          } catch {}
+        }
+
+        // 3. Fallback: If routeCoords empty or insufficient, extract perimeter from polygon
+        if (routeCoords.length < 2 && geom) {
+          if (geom.type === "Polygon" && Array.isArray(geom.coordinates?.[0])) {
+            routeCoords = geom.coordinates[0] as [number, number][];
+          } else if (geom.type === "MultiPolygon" && Array.isArray(geom.coordinates?.[0]?.[0])) {
+            routeCoords = geom.coordinates[0][0] as [number, number][];
+          } else if (geom.type === "LineString" && Array.isArray(geom.coordinates)) {
+            routeCoords = geom.coordinates as [number, number][];
+          }
+        }
+
+        // 4. GUARANTEE A VISIBLE TERRITORY SHAPE FOR EVERY RUN:
+        // If geom is missing or collapsed (e.g. straight line run or short test run with 0 area):
+        let polyArea = 0;
+        if (geom) {
+          try {
+            polyArea = turf.area(geom);
+          } catch {}
+        }
+
+        if (!geom || polyArea < 25) {
+          if (routeCoords.length >= 2) {
+            // Buffer open/straight route into a 25-meter wide glowing ribbon corridor!
+            try {
+              const line = turf.lineString(routeCoords);
+              const corridor = turf.buffer(line, 0.025, { units: "kilometers" });
+              if (corridor) {
+                geom = corridor.geometry;
+              }
+            } catch (err) {
+              console.warn("Could not buffer route corridor:", err);
+            }
+          } else {
+            // Buffer single spot / stationary test run into a 35-meter radius circular captured zone!
+            try {
+              const pt = turf.point([pinLng, pinLat]);
+              const zone = turf.buffer(pt, 0.035, { units: "kilometers" });
+              if (zone) {
+                geom = zone.geometry;
+              }
+            } catch (err) {
+              console.warn("Could not buffer point zone:", err);
             }
           }
-        } else if (parsed.type === "Feature") {
-          geom = parsed.geometry;
-        } else if (parsed.type === "Polygon" || parsed.type === "MultiPolygon") {
-          geom = parsed;
-        } else if (parsed.geometry) {
-          geom = parsed.geometry;
         }
 
         if (!geom) continue;
@@ -555,41 +780,17 @@ export function MapView({
           otherFeatures.push(feature);
         }
 
-        // Extract running route track (line)
-        let routeCoords: [number, number][] = [];
-        if (territory.routeGeoJSON) {
-          try {
-            const parsedRoute = JSON.parse(territory.routeGeoJSON);
-            if (Array.isArray(parsedRoute)) {
-              if (parsedRoute.length > 0 && typeof parsedRoute[0] === "object" && !Array.isArray(parsedRoute[0])) {
-                routeCoords = parsedRoute.map((p: any) => [
-                  Number(p.longitude ?? p.lng ?? p[0]),
-                  Number(p.latitude ?? p.lat ?? p[1]),
-                ]);
-              } else {
-                routeCoords = parsedRoute;
-              }
-            } else if (parsedRoute && parsedRoute.type === "LineString" && Array.isArray(parsedRoute.coordinates)) {
-              routeCoords = parsedRoute.coordinates;
-            } else if (parsedRoute && parsedRoute.type === "Feature" && parsedRoute.geometry?.coordinates) {
-              routeCoords = parsedRoute.geometry.coordinates;
-            }
-          } catch (e) {
-            console.warn("Could not parse routeGeoJSON for territory:", territory.id, e);
-          }
-        }
-        // Fallback: If routeCoords empty or insufficient, extract perimeter from polygon/multipolygon geometry
-        if (routeCoords.length < 2 && geom) {
+        // Add running track / boundary line
+        let lineCoords = routeCoords;
+        if (lineCoords.length < 2 && geom) {
           if (geom.type === "Polygon" && Array.isArray(geom.coordinates?.[0])) {
-            routeCoords = geom.coordinates[0] as [number, number][];
+            lineCoords = geom.coordinates[0];
           } else if (geom.type === "MultiPolygon" && Array.isArray(geom.coordinates?.[0]?.[0])) {
-            routeCoords = geom.coordinates[0][0] as [number, number][];
-          } else if (geom.type === "LineString" && Array.isArray(geom.coordinates)) {
-            routeCoords = geom.coordinates as [number, number][];
+            lineCoords = geom.coordinates[0][0];
           }
         }
 
-        if (routeCoords.length >= 2) {
+        if (lineCoords.length >= 2) {
           const lineFeature: Feature<LineString> = {
             type: "Feature",
             properties: {
@@ -602,7 +803,7 @@ export function MapView({
             },
             geometry: {
               type: "LineString",
-              coordinates: routeCoords,
+              coordinates: lineCoords,
             },
           };
 
@@ -613,19 +814,12 @@ export function MapView({
           }
         }
 
-        // Calculate centroid and identify start point for START beacon & runner name badge
-        const centroid = turf.centroid(geom);
-        const [cLng, cLat] = centroid.geometry.coordinates;
-        const hasStartPoint = routeCoords.length >= 1;
-        const pinLng = hasStartPoint ? routeCoords[0][0] : cLng;
-        const pinLat = hasStartPoint ? routeCoords[0][1] : cLat;
-
         const isSelf = territory.userId === currentUserId;
         const ownerName = territory.userName || (isSelf ? "You" : "Runner");
         const areaText = formatArea(territory.areaSquareMeters || 0);
         const distText = territory.distanceMeters ? formatDistance(territory.distanceMeters) : null;
 
-        // Container element for START pin & Owner Name (exact visual style as running view)
+        // Container element for START pin & Owner Name
         const markerEl = document.createElement("div");
         markerEl.className = "aim-territory-marker-container";
         markerEl.style.position = "relative";
@@ -710,37 +904,40 @@ export function MapView({
       }
     }
 
-    const mySource = mapRef.current.getSource("my-territories-source") as maplibregl.GeoJSONSource;
-    if (mySource) {
-      mySource.setData({
-        type: "FeatureCollection",
-        features: myFeatures,
-      } as FeatureCollection);
-    }
+    // Reliably push GeoJSON data to map sources with auto-retry if map is mounting
+    const updateSources = (attempt = 0) => {
+      if (!mapRef.current) return;
+      const mySource = mapRef.current.getSource("my-territories-source") as maplibregl.GeoJSONSource;
+      const otherSource = mapRef.current.getSource("other-territories-source") as maplibregl.GeoJSONSource;
+      const myRoutesSource = mapRef.current.getSource("my-routes-source") as maplibregl.GeoJSONSource;
+      const otherRoutesSource = mapRef.current.getSource("other-routes-source") as maplibregl.GeoJSONSource;
 
-    const otherSource = mapRef.current.getSource("other-territories-source") as maplibregl.GeoJSONSource;
-    if (otherSource) {
-      otherSource.setData({
-        type: "FeatureCollection",
-        features: otherFeatures,
-      } as FeatureCollection);
-    }
+      if (mySource && otherSource && myRoutesSource && otherRoutesSource) {
+        mySource.setData({
+          type: "FeatureCollection",
+          features: myFeatures,
+        } as FeatureCollection);
 
-    const myRoutesSource = mapRef.current.getSource("my-routes-source") as maplibregl.GeoJSONSource;
-    if (myRoutesSource) {
-      myRoutesSource.setData({
-        type: "FeatureCollection",
-        features: myRouteFeatures,
-      } as FeatureCollection);
-    }
+        otherSource.setData({
+          type: "FeatureCollection",
+          features: otherFeatures,
+        } as FeatureCollection);
 
-    const otherRoutesSource = mapRef.current.getSource("other-routes-source") as maplibregl.GeoJSONSource;
-    if (otherRoutesSource) {
-      otherRoutesSource.setData({
-        type: "FeatureCollection",
-        features: otherRouteFeatures,
-      } as FeatureCollection);
-    }
+        myRoutesSource.setData({
+          type: "FeatureCollection",
+          features: myRouteFeatures,
+        } as FeatureCollection);
+
+        otherRoutesSource.setData({
+          type: "FeatureCollection",
+          features: otherRouteFeatures,
+        } as FeatureCollection);
+      } else if (attempt < 10) {
+        setTimeout(() => updateSources(attempt + 1), 150);
+      }
+    };
+
+    updateSources();
   }, [worldTerritories, currentUserId, isMapReady]);
 
   // Smoothly fly to territory when chosen in the World Feed at street level
@@ -787,7 +984,7 @@ export function MapView({
         if (liveRouteCoordinates.length === 0) {
           mapRef.current.easeTo({
             center: [cLng, cLat],
-            zoom: 16.5,
+            zoom: 12.8,
             duration: 900,
           });
           hasAutoCenteredRef.current = true;
@@ -817,9 +1014,90 @@ export function MapView({
         style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
       />
 
-      {/* High-Visibility Projected SVG Live Route & Covered Area Overlay */}
-      {projectedRoutePoints.length >= 1 && (
+      {/* High-Visibility Projected SVG Territory Shapes & Live Route Overlay */}
+      {(projectedTerritories.length > 0 || projectedRoutePoints.length >= 1) && (
         <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-visible">
+          {/* Render All Captured & Manual Showcase Territory Polygons */}
+          {projectedTerritories.map((t) => (
+            <g key={t.id} className="territory-polygon-group">
+              {t.rings.map((ring, rIdx) => {
+                if (ring.length < 3) return null;
+                const pts = ring.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).join(" ");
+                return (
+                  <React.Fragment key={rIdx}>
+                    {/* Deep shadow / casing */}
+                    <polygon
+                      points={pts}
+                      fill="none"
+                      stroke="#000000"
+                      strokeWidth="8"
+                      strokeLinejoin="round"
+                      strokeOpacity="0.8"
+                    />
+                    {/* Glowing neon fill & ambient border */}
+                    <polygon
+                      points={pts}
+                      fill={t.id.startsWith("manual_") ? "rgba(163, 255, 18, 0.15)" : "rgba(163, 255, 18, 0.08)"}
+                      stroke="#a3ff12"
+                      strokeWidth="10"
+                      strokeLinejoin="round"
+                      strokeOpacity="0.35"
+                      style={{ filter: "drop-shadow(0 0 12px rgba(163,255,18,0.7))" }}
+                    />
+                    {/* Crisp neon primary stroke */}
+                    <polygon
+                      points={pts}
+                      fill="none"
+                      stroke="#a3ff12"
+                      strokeWidth="3.5"
+                      strokeLinejoin="round"
+                    />
+                    {/* Corner vertices with high-contrast dots (only for polygon shapes, not high-density curves) */}
+                    {ring.length <= 14 && ring.map((p, pIdx) => (
+                      <circle
+                        key={pIdx}
+                        cx={Math.round(p.x)}
+                        cy={Math.round(p.y)}
+                        r="4"
+                        fill="#a3ff12"
+                        stroke="#000000"
+                        strokeWidth="1.5"
+                      />
+                    ))}
+                  </React.Fragment>
+                );
+              })}
+
+              {/* Central Claim Badge for prominent showcase sectors */}
+              {(t.id === "manual_showcase_sector_ahmedabad" || t.id === "manual_vastrapur_loop_ahmedabad") && t.center.x > 0 && (
+                <g transform={`translate(${t.center.x}, ${t.center.y})`}>
+                  <rect
+                    x="-88"
+                    y="-14"
+                    width="176"
+                    height="28"
+                    rx="14"
+                    fill="rgba(8, 10, 14, 0.94)"
+                    stroke="#a3ff12"
+                    strokeWidth="1.5"
+                    style={{ filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.9))" }}
+                  />
+                  <text
+                    x="0"
+                    y="4"
+                    textAnchor="middle"
+                    fill="#a3ff12"
+                    fontSize="10"
+                    fontWeight="900"
+                    fontFamily="monospace"
+                  >
+                    {`👑 ${t.userName} • ${formatArea(t.area)}`}
+                  </text>
+                </g>
+              )}
+            </g>
+          ))}
+
           {/* Covered Area Polygon (Shaded Area being captured) */}
           {projectedRoutePoints.length >= 3 && (
             <polygon

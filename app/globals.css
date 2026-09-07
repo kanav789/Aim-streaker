@@ -63,3 +63,22 @@ body {
   border-bottom-color: rgba(9, 11, 15, 0.94) !important;
 }
 
+/* Dark Mode Tactical MapLibre Controls */
+.maplibregl-ctrl-attrib {
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  color: #71717a !important;
+  font-size: 10px !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  padding: 3px 8px !important;
+}
+
+.maplibregl-ctrl-attrib a {
+  color: #a1a1aa !important;
+  text-decoration: none !important;
+}
+
+.maplibregl-ctrl-attrib a:hover {
+  color: #a3ff12 !important;
+}

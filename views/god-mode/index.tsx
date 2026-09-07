@@ -31,6 +31,51 @@ const MapView = dynamic(() => import("./components/map-view"), {
   ),
 });
 
+// Explicit Manual Coordinates covering the prominent Ahmedabad sector matching user's map view
+export const MANUAL_TERRITORY_COORDINATES: [number, number][] = [
+  [72.4950, 23.0550], // North-West (Science City / Sola)
+  [72.5320, 23.0550], // North-East (Drive-In Road / Thaltej)
+  [72.5360, 23.0200], // East (Vastrapur Lake / IIM)
+  [72.5250, 22.9900], // South-East (Prahladnagar / Shyamal)
+  [72.4950, 22.9900], // South-West (Sarkhej / Makarba)
+  [72.4900, 23.0250], // West (Bopal Ambli Road)
+  [72.4950, 23.0550], // Closing loop back to NW
+];
+
+export const MANUAL_VASTRAPUR_COORDINATES: [number, number][] = [
+  [72.5080, 23.0480], // Thaltej Cross Road / SG Highway
+  [72.5380, 23.0480], // Drive-In Cinema / Memnagar
+  [72.5420, 23.0300], // Vastrapur Lake
+  [72.5120, 23.0300], // Pakwan Cross Road
+  [72.5080, 23.0480], // Closing point
+];
+
+export const MANUAL_TERRITORY: Territory = {
+  id: "manual_showcase_sector_ahmedabad",
+  userId: "showcase_runner_kanu",
+  userName: "Kanu (Prime Sector)",
+  sessionId: "session_manual_prime_1",
+  polygonGeoJSON: JSON.stringify(turf.polygon([MANUAL_TERRITORY_COORDINATES])),
+  routeGeoJSON: JSON.stringify(MANUAL_TERRITORY_COORDINATES),
+  areaSquareMeters: 18500000,
+  distanceMeters: 18000,
+  durationSeconds: 5400,
+  createdAt: new Date().toISOString(),
+};
+
+export const MANUAL_VASTRAPUR_TERRITORY: Territory = {
+  id: "manual_vastrapur_loop_ahmedabad",
+  userId: "showcase_runner_kanav",
+  userName: "Kanav (Vastrapur Loop)",
+  sessionId: "session_manual_vastrapur_2",
+  polygonGeoJSON: JSON.stringify(turf.polygon([MANUAL_VASTRAPUR_COORDINATES])),
+  routeGeoJSON: JSON.stringify(MANUAL_VASTRAPUR_COORDINATES),
+  areaSquareMeters: 3800000,
+  distanceMeters: 8500,
+  durationSeconds: 2400,
+  createdAt: new Date().toISOString(),
+};
+
 export default function GodModeView() {
   const { user } = useAuth();
   const { profile } = useAims();
@@ -66,9 +111,12 @@ export default function GodModeView() {
   const [rawGPSPoints, setRawGPSPoints] = useState<GPSPoint[]>([]);
   const [liveRouteCoordinates, setLiveRouteCoordinates] = useState<[number, number][]>([]);
 
-  // Territory Data
-  const [worldTerritories, setWorldTerritories] = useState<Territory[]>([]);
-  const [totalCumulativeArea, setTotalCumulativeArea] = useState(0);
+  // Territory Data initialized with the prominent manual showcase territories
+  const [worldTerritories, setWorldTerritories] = useState<Territory[]>([
+    MANUAL_TERRITORY,
+    MANUAL_VASTRAPUR_TERRITORY,
+  ]);
+  const [totalCumulativeArea, setTotalCumulativeArea] = useState(47300000);
   const [cumulativeTerritoryGeoJSON, setCumulativeTerritoryGeoJSON] = useState<string | null>(null);
 
   // Summary Modal State
@@ -97,9 +145,13 @@ export default function GodModeView() {
   const loadTerritoryData = useCallback(async () => {
     try {
       const allTerritories = await getAllWorldTerritories(200);
-      if (allTerritories && allTerritories.length > 0) {
-        setWorldTerritories(allTerritories);
-      }
+      setWorldTerritories([
+        MANUAL_TERRITORY,
+        MANUAL_VASTRAPUR_TERRITORY,
+        ...allTerritories.filter(
+          (t) => t.id !== MANUAL_TERRITORY.id && t.id !== MANUAL_VASTRAPUR_TERRITORY.id
+        ),
+      ]);
 
       if (user?.uid) {
         const userStats = await getUserCumulativeTerritory(user.uid);
@@ -304,16 +356,34 @@ export default function GodModeView() {
     // Optimistically construct and inject territory so the shape NEVER disappears
     const polyGeo =
       result.newPolygonGeoJSON ||
-      (coordsToSave.length >= 3
+      (coordsToSave.length >= 2
         ? (() => {
             try {
-              const closed = [...coordsToSave, coordsToSave[0]];
-              return JSON.stringify(turf.polygon([closed]));
+              if (coordsToSave.length >= 3) {
+                const closed = [...coordsToSave, coordsToSave[0]];
+                const testPoly = turf.polygon([closed]);
+                if (turf.area(testPoly) > 25) {
+                  return JSON.stringify(testPoly);
+                }
+              }
+              const line = turf.lineString(coordsToSave);
+              const corridor = turf.buffer(line, 0.025, { units: "kilometers" });
+              return corridor ? JSON.stringify(corridor) : null;
             } catch {
               return null;
             }
           })()
-        : null);
+        : (coordsToSave.length === 1
+            ? (() => {
+                try {
+                  const pt = turf.point(coordsToSave[0]);
+                  const zone = turf.buffer(pt, 0.035, { units: "kilometers" });
+                  return zone ? JSON.stringify(zone) : null;
+                } catch {
+                  return null;
+                }
+              })()
+            : null));
 
     if (polyGeo) {
       const optimisticTerritory: Territory = {
