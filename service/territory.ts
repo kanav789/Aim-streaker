@@ -428,18 +428,31 @@ export async function saveRunningSessionAndTerritory(params: {
   let polygonToSave = newPolygonGeoJSON;
   let areaToSave = Math.round(newUniqueAreaMeters);
 
-  // If no closed loop polygon was captured, but runner traversed at least 2 points:
-  // Automatically generate a 15-meter wide corridor polygon along their running route!
-  if (!polygonToSave && routeCoordinates.length >= 2) {
-    try {
-      const line = turf.lineString(routeCoordinates);
-      const corridor = turf.buffer(line, 0.015, { units: "kilometers" });
-      if (corridor) {
-        polygonToSave = JSON.stringify(corridor);
-        areaToSave = Math.max(1, Math.round(turf.area(corridor)));
+  // If no closed loop polygon was captured, or polygon is degenerate:
+  // Automatically generate a 25-meter wide corridor polygon along the route, or 35-meter zone for stationary runs!
+  if (!polygonToSave) {
+    if (routeCoordinates.length >= 2) {
+      try {
+        const line = turf.lineString(routeCoordinates);
+        const corridor = turf.buffer(line, 0.025, { units: "kilometers" });
+        if (corridor) {
+          polygonToSave = JSON.stringify(corridor);
+          areaToSave = Math.max(1, Math.round(turf.area(corridor)));
+        }
+      } catch (err) {
+        console.warn("Failed to generate route corridor buffer:", err);
       }
-    } catch (err) {
-      console.warn("Failed to generate route corridor buffer:", err);
+    } else if (routeCoordinates.length === 1) {
+      try {
+        const pt = turf.point(routeCoordinates[0]);
+        const zone = turf.buffer(pt, 0.035, { units: "kilometers" });
+        if (zone) {
+          polygonToSave = JSON.stringify(zone);
+          areaToSave = Math.max(1, Math.round(turf.area(zone)));
+        }
+      } catch (err) {
+        console.warn("Failed to generate point zone buffer:", err);
+      }
     }
   }
 
